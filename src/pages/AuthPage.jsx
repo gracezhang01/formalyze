@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, ArrowLeft, Check, AlertCircle } from 'lucide-react';
@@ -31,6 +30,9 @@ const AuthPage = ({ mode = 'login' }) => {
     try {
       const { error } = await supabase.auth.signInWithOtp({
         email,
+        options: {
+          shouldCreateUser: !isLogin,
+        }
       });
       
       if (error) {
@@ -38,7 +40,7 @@ const AuthPage = ({ mode = 'login' }) => {
       }
       
       setCodeSent(true);
-      setSuccessMessage(`Verification code sent to ${email}. Please check your inbox.`);
+      setSuccessMessage(`Verification email sent to ${email}. Please check your inbox for either a verification link or a 6-digit code. If you received a link, you can simply click it instead of entering a code here.`);
     } catch (error) {
       console.error('Error during auth:', error);
       setErrorMessage(error.message || 'An error occurred during authentication.');
