@@ -1,74 +1,57 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, ArrowLeft, Check, AlertCircle } from 'lucide-react';
-import supabase from '../lib/supabase';
+import { Mail, Lock, ArrowLeft, Check, AlertCircle } from 'lucide-react';
+import auth from '../lib/auth';
 
 const AuthPage = ({ mode = 'login' }) => {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
-  const [verificationCode, setVerificationCode] = useState('');
-  const [codeSent, setCodeSent] = useState(false);
   
   const isLogin = mode === 'login';
   const title = isLogin ? 'Welcome Back' : 'Create Your Account';
-  const buttonText = codeSent ? 'Verify Code' : (isLogin ? 'Sign In with Email' : 'Sign Up with Email');
+  const buttonText = isLogin ? 'Sign In' : 'Sign Up';
   const alternateText = isLogin 
     ? "Don't have an account?" 
     : "Already have an account?";
   const alternateLink = isLogin ? '/signup' : '/login';
   const alternateLinkText = isLogin ? 'Sign Up' : 'Sign In';
   
-  const sendVerificationCode = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
     setErrorMessage('');
     setSuccessMessage('');
     
     try {
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          shouldCreateUser: !isLogin,
+      console.log(`Attempting ${isLogin ? 'sign in' : 'sign up'}...`);
+      const { data, error } = isLogin
+        ? await auth.signIn(email, password)
+        : await auth.signUp(email, password);
+      
+      if (error) {
+        console.error('Auth error:', error);
+        // Provide more specific error messages
+        if (error.message.includes('User already exists')) {
+          setErrorMessage('This email is already registered. Please sign in instead.');
+        } else if (error.message.includes('Invalid login credentials')) {
+          setErrorMessage('Invalid email or password. Please try again.');
+        } else if (error.message.includes('Email not confirmed')) {
+          setErrorMessage('Please check your email to confirm your account.');
+        } else {
+          setErrorMessage(error.message || 'An error occurred during authentication.');
         }
-      });
-      
-      if (error) {
-        throw error;
+        return;
       }
       
-      setCodeSent(true);
-      setSuccessMessage(`Verification email sent to ${email}. Please check your inbox for either a verification link or a 6-digit code. If you received a link, you can simply click it instead of entering a code here.`);
-    } catch (error) {
-      console.error('Error during auth:', error);
-      setErrorMessage(error.message || 'An error occurred during authentication.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-  
-  const verifyCode = async (e) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setErrorMessage('');
-    
-    try {
-      const { error } = await supabase.auth.verifyOtp({
-        email,
-        token: verificationCode,
-        type: 'email'
-      });
-      
-      if (error) {
-        throw error;
-      }
-      
+      console.log('Auth successful, navigating to dashboard...');
       navigate('/dashboard');
     } catch (error) {
-      console.error('Error during verification:', error);
-      setErrorMessage(error.message || 'Invalid or expired code. Please try again.');
+      console.error('Unexpected error during auth:', error);
+      setErrorMessage('An unexpected error occurred. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -95,10 +78,7 @@ const AuthPage = ({ mode = 'login' }) => {
           </Link>
           <h1 className="text-2xl font-bold font-poppins text-morandi-dark">{title}</h1>
           <p className="mt-2 text-morandi-dark/70">
-            {codeSent 
-              ? 'Enter the verification code sent to your email'
-              : (isLogin ? 'Sign in to continue to your account' : 'Start creating beautiful surveys today')
-            }
+            {isLogin ? 'Sign in to continue to your account' : 'Start creating beautiful surveys today'}
           </p>
         </div>
         
@@ -117,45 +97,49 @@ const AuthPage = ({ mode = 'login' }) => {
             </div>
           )}
           
-          <form onSubmit={codeSent ? verifyCode : sendVerificationCode}>
-            {!codeSent ? (
-              <div className="mb-6">
-                <label htmlFor="email" className="block text-sm font-medium text-morandi-dark mb-1">
-                  Email Address
-                </label>
-                <div className="relative">
-                  <Mail 
-                    size={18} 
-                    className="absolute left-3 top-1/2 transform -translate-y-1/2 text-morandi-dark/50" 
-                  />
-                  <input
-                    type="email"
-                    id="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="input-field pl-10"
-                    placeholder="you@example.com"
-                    required
-                  />
-                </div>
-              </div>
-            ) : (
-              <div className="mb-6">
-                <label htmlFor="code" className="block text-sm font-medium text-morandi-dark mb-1">
-                  Verification Code
-                </label>
+          <form onSubmit={handleSubmit}>
+            <div className="mb-6">
+              <label htmlFor="email" className="block text-sm font-medium text-morandi-dark mb-1">
+                Email Address
+              </label>
+              <div className="relative">
+                <Mail 
+                  size={18} 
+                  className="absolute left-3 top-1/2 transform -translate-y-1/2 text-morandi-dark/50" 
+                />
                 <input
-                  type="text"
-                  id="code"
-                  value={verificationCode}
-                  onChange={(e) => setVerificationCode(e.target.value)}
-                  className="input-field"
-                  placeholder="Enter 6-digit code"
+                  type="email"
+                  id="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="input-field pl-10"
+                  placeholder="you@example.com"
                   required
-                  autoComplete="one-time-code"
                 />
               </div>
-            )}
+            </div>
+            
+            <div className="mb-6">
+              <label htmlFor="password" className="block text-sm font-medium text-morandi-dark mb-1">
+                Password
+              </label>
+              <div className="relative">
+                <Lock 
+                  size={18} 
+                  className="absolute left-3 top-1/2 transform -translate-y-1/2 text-morandi-dark/50" 
+                />
+                <input
+                  type="password"
+                  id="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="input-field pl-10"
+                  placeholder="••••••••"
+                  required
+                  minLength={6}
+                />
+              </div>
+            </div>
             
             <button
               type="submit"
@@ -175,16 +159,6 @@ const AuthPage = ({ mode = 'login' }) => {
                 buttonText
               )}
             </button>
-            
-            {codeSent && (
-              <button
-                type="button"
-                onClick={() => setCodeSent(false)}
-                className="mt-4 text-sm text-morandi-blue hover:text-morandi-pink transition-colors w-full text-center"
-              >
-                Use a different email address
-              </button>
-            )}
           </form>
           
           <div className="mt-6 text-center text-sm">
