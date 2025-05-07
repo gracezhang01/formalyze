@@ -1,6 +1,5 @@
-
 import { useState, useEffect } from 'react';
-import { useParams, Link, Navigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, BarChart2, Edit, Share2, Eye, Clipboard, Check } from 'lucide-react';
 import supabase from '../lib/supabase';
 
@@ -423,164 +422,283 @@ const SurveyPreviewTab = ({ survey }) => {
 
 const SurveyDetailPage = () => {
   const { id } = useParams();
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
   const [survey, setSurvey] = useState(null);
-  const [activeTab, setActiveTab] = useState('preview');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState('questions');
 
   useEffect(() => {
-    const getUser = async () => {
-      try {
-        const { data, error } = await supabase.auth.getUser();
-        
-        if (error) throw error;
-        
-        setUser(data.user);
-      } catch (error) {
-        console.error('Error getting user:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    getUser();
-    
-    // Get survey data
-    if (mockSurveyData[id]) {
-      setSurvey(mockSurveyData[id]);
-    }
+    fetchSurvey();
   }, [id]);
+
+  const fetchSurvey = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('surveys')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (error) throw error;
+      console.log('Fetched survey:', data);
+      setSurvey(data);
+    } catch (error) {
+      console.error('Error fetching survey:', error);
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex justify-center items-center bg-background-light">
-        <div className="flex flex-col items-center">
-          <div className="relative mb-4">
-            <span className="text-3xl font-bold font-poppins bg-clip-text text-transparent bg-gradient-to-r from-morandi-blue to-morandi-pink animate-pulse">
-              Formalyze
-            </span>
+      <div className="min-h-screen bg-background-light p-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="animate-pulse">
+            <div className="h-8 bg-morandi-gray/20 rounded w-1/3 mb-4"></div>
+            <div className="h-4 bg-morandi-gray/20 rounded w-1/4 mb-8"></div>
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-24 bg-morandi-gray/20 rounded"></div>
+              ))}
+            </div>
           </div>
-          <p className="text-morandi-dark/70">Loading survey details...</p>
         </div>
       </div>
     );
   }
 
-  if (!user) {
-    return <Navigate to="/login" replace />;
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background-light p-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="card p-8 text-center">
+            <h2 className="text-xl font-bold text-red-500 mb-4">Error</h2>
+            <p className="text-morandi-dark/70 mb-6">{error}</p>
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="btn-primary"
+            >
+              Return to Dashboard
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (!survey) {
     return (
-      <div className="min-h-screen pt-16 px-4 bg-background-light">
-        <div className="max-w-4xl mx-auto mt-8">
-          <Link to="/dashboard" className="flex items-center text-morandi-dark/70 hover:text-morandi-blue transition-colors mb-6">
-            <ArrowLeft size={18} className="mr-2" />
-            <span>Back to Dashboard</span>
-          </Link>
-          
-          <div className="card p-12 text-center">
-            <h2 className="text-xl font-medium text-morandi-dark mb-4">Survey Not Found</h2>
-            <p className="text-morandi-dark/70 mb-6">
-              The survey you're looking for doesn't exist or you don't have permission to view it.
-            </p>
-            <Link to="/dashboard" className="btn-primary">
+      <div className="min-h-screen bg-background-light p-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="card p-8 text-center">
+            <h2 className="text-xl font-bold text-morandi-dark mb-4">Survey Not Found</h2>
+            <p className="text-morandi-dark/70 mb-6">The survey you're looking for doesn't exist or you don't have permission to view it.</p>
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="btn-primary"
+            >
               Return to Dashboard
-            </Link>
+            </button>
           </div>
         </div>
       </div>
     );
   }
 
-  const getStatusColor = (status) => {
-    switch(status) {
-      case 'active':
-        return 'bg-green-500/20 text-green-700';
-      case 'draft':
-        return 'bg-morandi-gray/30 text-morandi-dark/70';
-      case 'closed':
-        return 'bg-morandi-blue/20 text-morandi-blue';
+  const renderQuestion = (question, index) => {
+    switch (question.question_type) {
+      case 'multiple_choice_single':
+        return (
+          <div key={index} className="card p-6 mb-4">
+            <div className="flex items-start mb-4">
+              <span className="text-morandi-dark/70 mr-2">{index + 1}.</span>
+              <div>
+                <h3 className="font-medium text-morandi-dark mb-2">{question.question_text}</h3>
+                {question.required && (
+                  <span className="text-red-500 text-sm">* Required</span>
+                )}
+              </div>
+            </div>
+            <div className="space-y-2">
+              {question.choices.map((choice, choiceIndex) => (
+                <label key={choiceIndex} className="flex items-center space-x-2">
+                  <input
+                    type="radio"
+                    name={`question-${index}`}
+                    value={choice.id}
+                    className="form-radio text-morandi-blue"
+                  />
+                  <span className="text-morandi-dark/70">{choice.text}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        );
+
+      case 'multiple_choice_multiple':
+        return (
+          <div key={index} className="card p-6 mb-4">
+            <div className="flex items-start mb-4">
+              <span className="text-morandi-dark/70 mr-2">{index + 1}.</span>
+              <div>
+                <h3 className="font-medium text-morandi-dark mb-2">{question.question_text}</h3>
+                {question.required && (
+                  <span className="text-red-500 text-sm">* Required</span>
+                )}
+              </div>
+            </div>
+            <div className="space-y-2">
+              {question.choices.map((choice, choiceIndex) => (
+                <label key={choiceIndex} className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    name={`question-${index}`}
+                    value={choice.id}
+                    className="form-checkbox text-morandi-blue"
+                  />
+                  <span className="text-morandi-dark/70">{choice.text}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        );
+
+      case 'short_answer':
+        return (
+          <div key={index} className="card p-6 mb-4">
+            <div className="flex items-start mb-4">
+              <span className="text-morandi-dark/70 mr-2">{index + 1}.</span>
+              <div>
+                <h3 className="font-medium text-morandi-dark mb-2">{question.question_text}</h3>
+                {question.required && (
+                  <span className="text-red-500 text-sm">* Required</span>
+                )}
+              </div>
+            </div>
+            <input
+              type="text"
+              className="input-field w-full"
+              placeholder="Your answer"
+            />
+          </div>
+        );
+
       default:
-        return 'bg-morandi-gray/20 text-morandi-dark/70';
+        return null;
     }
   };
 
-  return (
-    <div className="min-h-screen pt-16 px-4 bg-background-light">
-      <div className="max-w-4xl mx-auto mt-8 pb-12">
-        <Link to="/dashboard" className="flex items-center text-morandi-dark/70 hover:text-morandi-blue transition-colors mb-6">
-          <ArrowLeft size={18} className="mr-2" />
-          <span>Back to Dashboard</span>
-        </Link>
-        
-        <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
-          <div>
-            <div className="flex items-center mb-1">
-              <h1 className="text-2xl font-bold text-morandi-dark">{survey.title}</h1>
-              <div className={`ml-3 px-2 py-0.5 rounded-full text-xs ${getStatusColor(survey.status)}`}>
-                {survey.status.charAt(0).toUpperCase() + survey.status.slice(1)}
-              </div>
+  const renderResponses = () => {
+    if (!survey.responses || survey.responses.length === 0) {
+      return (
+        <div className="card p-8 text-center">
+          <BarChart2 size={48} className="text-morandi-blue/40 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-morandi-dark mb-2">No Responses Yet</h3>
+          <p className="text-morandi-dark/70">
+            Share your survey to start collecting responses.
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        {survey.responses.map((response, index) => (
+          <div key={index} className="card p-6">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-sm text-morandi-dark/70">
+                Response #{index + 1}
+              </span>
+              <span className="text-sm text-morandi-dark/70">
+                {new Date(response.timestamp).toLocaleString()}
+              </span>
             </div>
-            <p className="text-morandi-dark/70">
-              Created on {new Date(survey.createdAt).toLocaleDateString()} • {survey.questions.length} questions
-            </p>
+            <div className="space-y-4">
+              {response.answers.map((answer, answerIndex) => {
+                const question = survey.questions.find(q => q.id === answer.question_id);
+                return (
+                  <div key={answerIndex} className="border-b border-morandi-gray/20 pb-4 last:border-0">
+                    <h4 className="font-medium text-morandi-dark mb-2">{question.question_text}</h4>
+                    <p className="text-morandi-dark/70">
+                      {Array.isArray(answer.answer) ? answer.answer.join(', ') : answer.answer}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          
-          <div className="flex space-x-2">
-            <button className="btn-secondary flex items-center">
-              <Edit size={16} className="mr-2" />
-              Edit
-            </button>
-            <button className="btn-primary flex items-center">
-              <Share2 size={16} className="mr-2" />
-              Share
+        ))}
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-background-light p-8">
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="btn-text flex items-center"
+          >
+            <ArrowLeft size={16} className="mr-2" />
+            Back to Dashboard
+          </button>
+          <div className="flex items-center space-x-4">
+            <button className="btn-primary">
+              Share Survey
             </button>
           </div>
         </div>
-        
-        <div className="mb-6">
-          <div className="border-b border-morandi-gray/30">
-            <nav className="flex space-x-6">
-              <button 
-                onClick={() => setActiveTab('preview')}
-                className={`py-3 px-1 border-b-2 transition-colors ${
-                  activeTab === 'preview'
-                    ? 'border-morandi-blue text-morandi-blue'
-                    : 'border-transparent text-morandi-dark/70 hover:text-morandi-dark'
-                }`}
-              >
-                <div className="flex items-center">
-                  <Eye size={18} className="mr-2" />
-                  Preview
-                </div>
-              </button>
-              <button 
-                onClick={() => setActiveTab('results')}
-                className={`py-3 px-1 border-b-2 transition-colors ${
-                  activeTab === 'results'
-                    ? 'border-morandi-blue text-morandi-blue'
-                    : 'border-transparent text-morandi-dark/70 hover:text-morandi-dark'
-                }`}
-              >
-                <div className="flex items-center">
-                  <BarChart2 size={18} className="mr-2" />
-                  Results
-                  {survey.responses.length > 0 && (
-                    <span className="ml-2 px-1.5 py-0.5 rounded-full text-xs bg-morandi-blue/10 text-morandi-blue">
-                      {survey.responses.length}
-                    </span>
-                  )}
-                </div>
-              </button>
-            </nav>
-          </div>
+
+        {/* Survey Title and Description */}
+        <div className="card p-8 mb-8">
+          <h1 className="text-2xl font-bold text-morandi-dark mb-2">{survey.title}</h1>
+          {survey.description && (
+            <p className="text-morandi-dark/70">{survey.description}</p>
+          )}
         </div>
-        
-        {activeTab === 'preview' ? (
-          <SurveyPreviewTab survey={survey} />
+
+        {/* Tabs */}
+        <div className="flex border-b border-morandi-gray/20 mb-8">
+          <button
+            onClick={() => setActiveTab('questions')}
+            className={`px-4 py-2 font-medium ${
+              activeTab === 'questions'
+                ? 'text-morandi-blue border-b-2 border-morandi-blue'
+                : 'text-morandi-dark/70 hover:text-morandi-dark'
+            }`}
+          >
+            Questions
+          </button>
+          <button
+            onClick={() => setActiveTab('responses')}
+            className={`px-4 py-2 font-medium flex items-center ${
+              activeTab === 'responses'
+                ? 'text-morandi-blue border-b-2 border-morandi-blue'
+                : 'text-morandi-dark/70 hover:text-morandi-dark'
+            }`}
+          >
+            <BarChart2 size={16} className="mr-2" />
+            Responses
+            {survey.responses && survey.responses.length > 0 && (
+              <span className="ml-2 px-2 py-0.5 text-xs bg-morandi-blue/10 text-morandi-blue rounded-full">
+                {survey.responses.length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Content */}
+        {activeTab === 'questions' ? (
+          <div className="space-y-4">
+            {survey.questions.map((question, index) => renderQuestion(question, index))}
+          </div>
         ) : (
-          <ResultsTab survey={survey} />
+          renderResponses()
         )}
       </div>
     </div>

@@ -12,3 +12,5 @@
     ```bash
     npm run dev
     ```
+
+database password: gulianxiaogulianxiaogulianxiaogulianxiaogulianxiaogulianxiao

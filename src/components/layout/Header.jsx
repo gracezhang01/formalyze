@@ -57,7 +57,6 @@ const Header = () => {
         <nav className="hidden md:flex items-center space-x-8">
           <a href="/#features" className="text-morandi-dark hover:text-morandi-blue transition-colors">Features</a>
           <a href="/#how-it-works" className="text-morandi-dark hover:text-morandi-blue transition-colors">How It Works</a>
-          <a href="/#pricing" className="text-morandi-dark hover:text-morandi-blue transition-colors">Pricing</a>
         </nav>
 
         <div className="hidden md:flex items-center space-x-4">
