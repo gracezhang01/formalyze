@@ -427,6 +427,8 @@ const SurveyDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('questions');
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     fetchSurvey();
@@ -450,6 +452,17 @@ const SurveyDetailPage = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleShare = () => {
+    setShowShareModal(true);
+  };
+
+  const copyShareLink = () => {
+    const shareLink = `${window.location.origin}/s/${id}`;
+    navigator.clipboard.writeText(shareLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   if (loading) {
@@ -648,11 +661,59 @@ const SurveyDetailPage = () => {
             Back to Dashboard
           </button>
           <div className="flex items-center space-x-4">
-            <button className="btn-primary">
+            <button 
+              className="btn-primary flex items-center"
+              onClick={handleShare}
+            >
+              <Share2 size={16} className="mr-2" />
               Share Survey
             </button>
           </div>
         </div>
+
+        {/* Share Modal */}
+        {showShareModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
+              <h3 className="text-lg font-medium text-morandi-dark mb-4">Share Survey</h3>
+              <p className="text-morandi-dark/70 mb-4">
+                Share this link with others to collect responses. Anyone with the link can fill out your survey.
+              </p>
+              <div className="flex items-center gap-2 mb-6">
+                <input
+                  type="text"
+                  value={`${window.location.origin}/s/${id}`}
+                  readOnly
+                  className="input-field flex-grow"
+                />
+                <button
+                  onClick={copyShareLink}
+                  className="btn-primary flex items-center whitespace-nowrap"
+                >
+                  {copied ? (
+                    <>
+                      <Check size={16} className="mr-2" />
+                      Copied
+                    </>
+                  ) : (
+                    <>
+                      <Clipboard size={16} className="mr-2" />
+                      Copy Link
+                    </>
+                  )}
+                </button>
+              </div>
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setShowShareModal(false)}
+                  className="btn-text"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Survey Title and Description */}
         <div className="card p-8 mb-8">

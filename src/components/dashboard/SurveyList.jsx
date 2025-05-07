@@ -150,7 +150,7 @@ const SurveyCard = ({ survey, onDelete }) => {
   );
 };
 
-const EmptySurveyList = () => {
+const EmptySurveyList = ({ onSetActiveTab }) => {
   return (
     <div className="card flex flex-col items-center text-center p-8">
       <div className="w-16 h-16 mb-6 rounded-full bg-morandi-blue/10 flex items-center justify-center">
@@ -163,14 +163,14 @@ const EmptySurveyList = () => {
       <p className="text-morandi-dark/70 mb-6">
         Start by creating your first survey with AI assistance
       </p>
-      <Link to="/dashboard" onClick={() => window.location.hash = "/dashboard"} className="btn-primary">
+      <button onClick={() => onSetActiveTab('chat')} className="btn-primary">
         Create Your First Survey
-      </Link>
+      </button>
     </div>
   );
 };
 
-const SurveyList = ({ user }) => {
+const SurveyList = ({ user, onSetActiveTab }) => {
   const [surveys, setSurveys] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -338,7 +338,7 @@ const SurveyList = ({ user }) => {
 
   if (!surveys || surveys.length === 0) {
     console.log('No surveys available, rendering EmptySurveyList');
-    return <EmptySurveyList />;
+    return <EmptySurveyList onSetActiveTab={onSetActiveTab} />;
   }
 
   return (

@@ -236,10 +236,6 @@ const DashboardPage = () => {
                   <h1 className="text-2xl font-bold text-morandi-dark">AI Chat</h1>
                   <p className="text-morandi-dark/70">Chat with AI to generate your survey questions</p>
                 </div>
-                <button className="btn-primary flex items-center">
-                  <PencilLine size={16} className="mr-2" />
-                  New Survey
-                </button>
               </div>
               <ChatInterface user={user} />
             </div>
@@ -252,12 +248,12 @@ const DashboardPage = () => {
                   <h1 className="text-2xl font-bold text-morandi-dark">My Surveys</h1>
                   <p className="text-morandi-dark/70">Manage your created surveys</p>
                 </div>
-                <button className="btn-primary flex items-center">
+                <button className="btn-primary flex items-center" onClick={() => setActiveTab('chat')}>
                   <Plus size={16} className="mr-2" />
                   Create Survey
                 </button>
               </div>
-              <SurveyList user={user} />
+              <SurveyList user={user} onSetActiveTab={setActiveTab} />
             </div>
           )}
           
