@@ -1,6 +1,6 @@
-
 import { useState, useRef, useEffect } from 'react';
 import { Send, Download, Check, ChevronUp, ChevronDown, Sparkles, AlertCircle } from 'lucide-react';
+import axios from 'axios';
 
 const QuestionSuggestion = ({ question, isSelected, onToggle }) => {
   return (
@@ -130,19 +130,29 @@ const ChatMessage = ({ message, isUser }) => {
 };
 
 const ChatInterface = ({ user }) => {
-  const [messages, setMessages] = useState([
-    { 
-      role: 'assistant', 
-      content: 'Hello! I\'m your AI survey assistant. Describe the type of survey you want to create, and I\'ll suggest relevant questions. What kind of information are you looking to collect?' 
-    }
-  ]);
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [questionSuggestions, setQuestionSuggestions] = useState([]);
   const [selectedQuestions, setSelectedQuestions] = useState([]);
   const [isSurveyGenerating, setIsSurveyGenerating] = useState(false);
   const [error, setError] = useState('');
+  const [conversationStarted, setConversationStarted] = useState(false);
+  const [isConversationComplete, setIsConversationComplete] = useState(false);
+  const [surveyQuestions, setSurveyQuestions] = useState([]);
   const chatEndRef = useRef(null);
+  
+  // 设置 API 基础 URL - 使用相对路径
+  const API_BASE_URL = '/api';
+
+  // 在 axios 请求中添加 CORS 配置
+  const axiosConfig = {
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    withCredentials: false // 不发送凭证
+  };
 
   const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -152,63 +162,50 @@ const ChatInterface = ({ user }) => {
     scrollToBottom();
   }, [messages]);
 
-  // Mock question suggestions based on common survey topics
-  const generateSuggestions = (userQuery) => {
-    const query = userQuery.toLowerCase();
-    let suggestions = [];
-    
-    if (query.includes('customer') || query.includes('satisfaction') || query.includes('feedback')) {
-      suggestions = [
-        { id: 1, text: 'How satisfied are you with our product/service?', type: 'rating', description: 'Scale from 1-10' },
-        { id: 2, text: 'What aspects of our product/service do you like the most?', type: 'open' },
-        { id: 3, text: 'What improvements would you suggest for our product/service?', type: 'open' },
-        { id: 4, text: 'How likely are you to recommend us to a friend or colleague?', type: 'nps', description: 'NPS question (0-10 scale)' },
-        { id: 5, text: 'Did our product/service meet your expectations?', type: 'multiple' },
-      ];
-    } else if (query.includes('event') || query.includes('workshop') || query.includes('conference')) {
-      suggestions = [
-        { id: 1, text: 'How would you rate the overall quality of the event?', type: 'rating' },
-        { id: 2, text: 'Which sessions did you find most valuable?', type: 'multiple' },
-        { id: 3, text: 'How was the event location and facilities?', type: 'rating' },
-        { id: 4, text: 'Would you attend a similar event in the future?', type: 'boolean' },
-        { id: 5, text: 'Do you have any suggestions for future events?', type: 'open' },
-      ];
-    } else if (query.includes('employee') || query.includes('work') || query.includes('job')) {
-      suggestions = [
-        { id: 1, text: 'How satisfied are you with your current role?', type: 'rating' },
-        { id: 2, text: 'Do you feel your work is valued by the organization?', type: 'boolean' },
-        { id: 3, text: 'What aspects of your workplace would you like to see improved?', type: 'open' },
-        { id: 4, text: 'How would you rate the work-life balance in your role?', type: 'rating' },
-        { id: 5, text: 'Do you feel you have opportunities for career growth?', type: 'multiple' },
-      ];
-    } else if (query.includes('health') || query.includes('wellness') || query.includes('fitness')) {
-      suggestions = [
-        { id: 1, text: 'How would you rate your current health status?', type: 'rating' },
-        { id: 2, text: 'How many times per week do you exercise?', type: 'number' },
-        { id: 3, text: 'What are your primary fitness goals?', type: 'checkbox' },
-        { id: 4, text: 'Do you follow any specific diet or nutrition plan?', type: 'multiple' },
-        { id: 5, text: 'What health challenges are you currently facing?', type: 'open' },
-      ];
-    } else if (query.includes('education') || query.includes('course') || query.includes('training')) {
-      suggestions = [
-        { id: 1, text: 'How would you rate the quality of instruction?', type: 'rating' },
-        { id: 2, text: 'Was the course material relevant to your needs?', type: 'boolean' },
-        { id: 3, text: 'What topics would you like to see covered in future courses?', type: 'open' },
-        { id: 4, text: 'How likely are you to apply what you learned?', type: 'rating' },
-        { id: 5, text: 'Would you recommend this course to others?', type: 'boolean' },
-      ];
-    } else {
-      // Default suggestions
-      suggestions = [
-        { id: 1, text: 'What is your age range?', type: 'multiple' },
-        { id: 2, text: 'How did you hear about us?', type: 'multiple' },
-        { id: 3, text: 'What improvements would you suggest?', type: 'open' },
-        { id: 4, text: 'How likely are you to recommend us to others?', type: 'rating' },
-        { id: 5, text: 'Would you use our service again in the future?', type: 'boolean' },
-      ];
+  // Start conversation with the agent when component mounts
+  useEffect(() => {
+    startConversation();
+  }, []);
+
+  const startConversation = async () => {
+    try {
+      setIsLoading(true);
+      console.log("Starting conversation with API at:", `${API_BASE_URL}/survey-agent/start`);
+      
+      const response = await fetch(`${API_BASE_URL}/survey-agent/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        mode: 'cors'
+      });
+      
+      console.log("Response status:", response.status);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log("Received data:", data);
+      
+      if (!data.question) {
+        throw new Error("No question received from API");
+      }
+      
+      setMessages([{ 
+        role: 'assistant', 
+        content: data.question
+      }]);
+      
+      setConversationStarted(true);
+      setIsLoading(false);
+    } catch (err) {
+      console.error('Error starting conversation:', err);
+      setError(`Failed to start conversation. ${err.message}`);
+      setIsLoading(false);
+      setConversationStarted(false);
     }
-    
-    return suggestions;
   };
 
   const sendMessage = async (e) => {
@@ -222,23 +219,65 @@ const ChatInterface = ({ user }) => {
     setError('');
     
     try {
-      // In a real implementation, this would call the OpenAI API
-      // For now, we'll simulate the AI response with a delay
-      setTimeout(() => {
-        const newSuggestions = generateSuggestions(userMessage.content);
-        setQuestionSuggestions(newSuggestions);
+      console.log("Sending request to process with:", { userResponse: userMessage.content });
+      
+      // Call the backend API to process the user's response
+      const response = await axios.post(`${API_BASE_URL}/survey-agent/process`, {
+        userResponse: userMessage.content
+      });
+      
+      console.log("Received process response:", response.data);
+      const { question, isComplete } = response.data;
+      
+      // Add the agent's response to the messages
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: question
+      }]);
+      
+      setIsConversationComplete(isComplete);
+      
+      // If the conversation is complete, get the generated survey questions
+      if (isComplete) {
+        console.log("Conversation complete, getting survey questions...");
+        const surveyResponse = await axios.get(`${API_BASE_URL}/survey-agent/survey`);
+        console.log("Received survey questions:", surveyResponse.data);
         
-        const aiResponse = { 
-          role: 'assistant', 
-          content: `I've analyzed your request for a survey about "${userMessage.content}". Here are some suggested questions that might be helpful for your survey. You can select any questions you'd like to include:` 
-        };
+        setSurveyQuestions(surveyResponse.data.questions);
         
-        setMessages(prev => [...prev, aiResponse]);
-        setIsLoading(false);
-      }, 1500);
+        // Convert the generated questions to the format expected by the SurveyPreview component
+        const formattedQuestions = surveyResponse.data.questions.map(q => ({
+          id: q.id || Math.random().toString(36).substr(2, 9),
+          text: q.question_text,
+          type: q.question_type,
+          description: q.question_type === 'multiple_choice' ? `Options: ${q.options?.join(', ')}` : undefined
+        }));
+        
+        setQuestionSuggestions(formattedQuestions);
+        setSelectedQuestions(formattedQuestions);
+      }
+      
+      setIsLoading(false);
     } catch (err) {
       console.error('Error sending message:', err);
-      setError('Failed to get a response. Please try again.');
+      
+      // 获取更详细的错误信息
+      let errorMessage = 'Failed to get a response. ';
+      
+      if (err.response) {
+        console.error('Error response:', err.response.data);
+        errorMessage += `Server error: ${err.response.status}. `;
+        if (err.response.data && err.response.data.error) {
+          errorMessage += err.response.data.error;
+        }
+      } else if (err.request) {
+        console.error('No response received');
+        errorMessage += 'No response from server. Check if the backend is running.';
+      } else {
+        errorMessage += err.message;
+      }
+      
+      setError(errorMessage);
       setIsLoading(false);
     }
   };
@@ -253,14 +292,20 @@ const ChatInterface = ({ user }) => {
     }
   };
 
-  const handleGenerateSurvey = () => {
+  const handleGenerateSurvey = async () => {
     if (selectedQuestions.length === 0) return;
     
     setIsSurveyGenerating(true);
     
-    // Simulate survey generation
-    setTimeout(() => {
-      setIsSurveyGenerating(false);
+    try {
+      console.log("Finalizing survey with selected questions:", selectedQuestions.map(q => q.id));
+      
+      // Call the backend API to finalize the survey
+      const response = await axios.post(`${API_BASE_URL}/survey-agent/finalize`, {
+        selectedQuestions: selectedQuestions.map(q => q.id)
+      });
+      
+      console.log("Survey finalized:", response.data);
       
       // Add a confirmation message
       setMessages(prev => [
@@ -271,10 +316,12 @@ const ChatInterface = ({ user }) => {
         }
       ]);
       
-      // Reset selections after successful generation
-      setSelectedQuestions([]);
-      setQuestionSuggestions([]);
-    }, 2000);
+      setIsSurveyGenerating(false);
+    } catch (err) {
+      console.error('Error generating survey:', err);
+      setError('Failed to generate survey. Please try again.');
+      setIsSurveyGenerating(false);
+    }
   };
 
   return (
@@ -302,6 +349,12 @@ const ChatInterface = ({ user }) => {
         <div className="mx-6 mt-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm flex items-start">
           <AlertCircle size={16} className="mr-2 flex-shrink-0 mt-0.5" />
           <span>{error}</span>
+          <button 
+            className="ml-auto text-red-700 hover:text-red-900 underline"
+            onClick={startConversation}
+          >
+            Retry
+          </button>
         </div>
       )}
       
@@ -327,9 +380,9 @@ const ChatInterface = ({ user }) => {
           </div>
         )}
         
-        {questionSuggestions.length > 0 && (
+        {isConversationComplete && questionSuggestions.length > 0 && (
           <div className="my-4">
-            <h3 className="font-medium mb-2">Suggested Questions:</h3>
+            <h3 className="font-medium mb-2">Generated Survey Questions:</h3>
             {questionSuggestions.map((question) => (
               <QuestionSuggestion
                 key={question.id}
@@ -359,14 +412,14 @@ const ChatInterface = ({ user }) => {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Type your survey requirements..."
+            placeholder="Type your response..."
             className="input-field flex-grow"
-            disabled={isLoading}
+            disabled={isLoading || isConversationComplete}
           />
           <button
             type="submit"
-            className={`ml-2 btn-primary ${(isLoading || !input.trim()) ? 'opacity-50 cursor-not-allowed' : ''}`}
-            disabled={isLoading || !input.trim()}
+            className={`ml-2 btn-primary ${(isLoading || !input.trim() || isConversationComplete) ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={isLoading || !input.trim() || isConversationComplete}
           >
             <Send size={18} />
           </button>
