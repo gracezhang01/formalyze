@@ -23,10 +23,11 @@
       "dest": "/api/index.py"
     },
     {
-      "handle": "filesystem"
+      "src": "^/assets/(.*)",
+      "dest": "/dist/assets/$1"
     },
     {
-      "src": "/(.*)",
+      "src": "^/(?!api/?|assets/?)(.*)",
       "dest": "/dist/index.html"
     }
   ]
