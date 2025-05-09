@@ -4,8 +4,8 @@ python-dotenv==1.0.1
 
 
 # LangChain and related packages
-langchain-core>=0.1.7,<0.2.0
-langchain-openai>=0.0.2
+langchain-core==0.1.7
+langchain-openai==0.0.2
 langgraph==0.0.19
 
 # OpenAI
