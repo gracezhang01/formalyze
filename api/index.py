@@ -41,8 +41,6 @@ def handler(event, context):
                 'Access-Control-Allow-Origin': '*'
             }
         }
-    # hgood
-    
     except Exception as e:
         print(f"Unhandled error: {e}")
         traceback.print_exc()
