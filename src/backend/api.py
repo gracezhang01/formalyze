@@ -24,7 +24,6 @@ def start_conversation():
     try:
         global survey_agent
         survey_agent = LangGraphSurveyAgent()
-        # 开始对话
         first_question = survey_agent.start_conversation()
         return jsonify({"question": first_question})
     except Exception as e:
