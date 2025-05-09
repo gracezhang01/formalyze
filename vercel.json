@@ -5,12 +5,16 @@
       "src": "api/test.py",
       "use": "@vercel/python",
       "config": {
-        "runtime": "python3.9"
+        "runtime": "python3.9",
+        "requirementsPath": "api/requirements.txt"
       }
     },
     {
       "src": "package.json",
-      "use": "@vercel/node"
+      "use": "@vercel/node",
+      "config": {
+        "buildCommand": "vite build"
+      }
     }
   ],
   "routes": [
