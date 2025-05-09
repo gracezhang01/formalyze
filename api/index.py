@@ -149,45 +149,6 @@ class handler(BaseHTTPRequestHandler):
                         HTTPStatus.INTERNAL_SERVER_ERROR,
                         {'error': str(e)}
                     )
-            elif self.path == "/api/survey-agent/generate" and self.command == "POST":
-                try:
-                    # 解析请求体
-                    body = json.loads(self.rfile.read(int(self.headers['Content-Length'])).decode('utf-8'))
-                    
-                    # 导入必要的类
-                    from src.backend.langgraph_survey_agent import LangGraphSurveyAgent
-                    
-                    # 初始化agent
-                    agent = LangGraphSurveyAgent()
-                    
-                    # 准备提示词
-                    prompt = f"""
-                    Generate a professional survey based on the following requirements:
-                    
-                    Purpose: {body.get('purpose', '')}
-                    Target audience: {body.get('target_audience', '')}
-                    Important feedback: {body.get('important_feedback', '')}
-                    Topics to cover: {body.get('topics', '')}
-                    Question types: {body.get('question_types', '')}
-                    
-                    Please generate appropriate survey questions.
-                    """
-                    
-                    # 生成问题
-                    questions = agent.generate_survey(prompt)
-                    
-                    self._send_response(
-                        HTTPStatus.OK,
-                        {"questions": questions},
-                        {"Content-Type": "application/json"}
-                    )
-                except Exception as e:
-                    print(f"Error generating survey questions: {e}")
-                    self._send_response(
-                        HTTPStatus.INTERNAL_SERVER_ERROR,
-                        {"error": str(e)},
-                        {"Content-Type": "application/json"}
-                    )
             else:
                 print(f"Invalid path requested: {self.path}")
                 self._send_response(
