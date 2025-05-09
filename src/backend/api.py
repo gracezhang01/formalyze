@@ -5,12 +5,9 @@ import sys
 import traceback
 from langgraph_survey_agent import LangGraphSurveyAgent
 
-# 添加当前目录到 Python 路径，以便能够导入 langgraph_survey_agent
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.append(current_dir)
-
-# 导入 LangGraphSurveyAgent 
 
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
@@ -26,9 +23,7 @@ def test_api():
 def start_conversation():
     try:
         global survey_agent
-        # 初始化 agent
         survey_agent = LangGraphSurveyAgent()
-        # 开始对话
         first_question = survey_agent.start_conversation()
         return jsonify({"question": first_question})
     except Exception as e:
