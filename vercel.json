@@ -1,19 +1,23 @@
 {
-  "buildCommand": "npm run vercel-build",
-  "installCommand": "npm install && pip install -r requirements.txt",
-  "outputDirectory": "dist",
-  "framework": "vite",
-  "routes": [
-    { 
-      "handle": "filesystem"
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/**/*.py",
+      "use": "@vercel/python"
     },
     {
+      "src": "package.json",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
       "src": "/api/(.*)",
-      "dest": "/api/index.py"
+      "dest": "api/$1"
     },
     {
       "src": "/(.*)",
-      "dest": "/index.html"
+      "dest": "/$1"
     }
   ]
-} 
+}
