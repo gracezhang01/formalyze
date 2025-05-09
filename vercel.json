@@ -1,5 +1,9 @@
+
 {
   "version": 2,
+  "engines": { 
+    "python": "3.9" 
+  },
   "builds": [
     {
       "src": "api/index.py",
