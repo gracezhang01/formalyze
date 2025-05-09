@@ -1,10 +1,11 @@
-import json
-import os
 import sys
-import traceback
+import os
 
-# 添加路径以便能够导入 langgraph_survey_agent
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src', 'backend'))
+# 添加项目根目录到 Python 路径
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# 现在可以导入 src/backend 中的模块
+from src.backend.langgraph_survey_agent import LangGraphSurveyAgent
 
 def create_response(status_code, body, headers=None):
     """创建标准响应格式"""
