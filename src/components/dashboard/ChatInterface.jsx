@@ -146,8 +146,8 @@ const ChatInterface = ({ user, onSetActiveTab }) => {
     },
     {
       id: 3,
-      text: "How many questions would you like the survey to include?",
-      hint: "Recommended: 5-10 for higher completion rates"
+      text: "What is the most important feedback you want to gather from respondents?",
+      hint: ""
     },
     {
       id: 4,
