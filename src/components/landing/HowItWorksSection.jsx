@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { MessageCircle, CheckCircle2, BarChart, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -125,56 +124,6 @@ const HowItWorksSection = () => {
             description="View comprehensive analytics and gain insights from your survey responses."
             isActive={activeStep === 3}
           />
-        </div>
-
-        <div className="text-center mt-8 mb-16">
-          <h3 className="text-2xl font-medium font-poppins mb-8">What Our Users Say</h3>
-          
-          <div className="relative max-w-3xl mx-auto">
-            <div 
-              className="overflow-x-hidden"
-              ref={sliderRef}
-            >
-              <div className="flex">
-                {testimonials.map((testimonial, index) => (
-                  <div key={index} className="min-w-full">
-                    <Testimonial {...testimonial} />
-                  </div>
-                ))}
-              </div>
-            </div>
-            
-            <div className="flex justify-center mt-8 items-center">
-              <button 
-                onClick={prevTestimonial}
-                className="mr-2 p-2 rounded-full border border-morandi-gray/30 text-morandi-dark/60 hover:bg-morandi-gray/10 hover:text-morandi-dark transition-colors"
-                aria-label="Previous testimonial"
-              >
-                <ChevronLeft size={16} />
-              </button>
-              
-              <div className="flex space-x-2">
-                {testimonials.map((_, index) => (
-                  <button
-                    key={index}
-                    onClick={() => setCurrentTestimonial(index)}
-                    className={`w-2 h-2 rounded-full transition-colors ${
-                      currentTestimonial === index ? 'bg-morandi-blue' : 'bg-morandi-gray/40'
-                    }`}
-                    aria-label={`Go to testimonial ${index + 1}`}
-                  />
-                ))}
-              </div>
-              
-              <button 
-                onClick={nextTestimonial}
-                className="ml-2 p-2 rounded-full border border-morandi-gray/30 text-morandi-dark/60 hover:bg-morandi-gray/10 hover:text-morandi-dark transition-colors"
-                aria-label="Next testimonial"
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
-          </div>
         </div>
 
         <div className="text-center">

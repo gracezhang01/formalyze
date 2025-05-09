@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, Download, Check, ChevronUp, ChevronDown, Sparkles, AlertCircle } from 'lucide-react';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
+import supabase from '../../lib/supabase';
 
 const QuestionSuggestion = ({ question, isSelected, onToggle }) => {
   return (
@@ -129,7 +131,7 @@ const ChatMessage = ({ message, isUser }) => {
   );
 };
 
-const ChatInterface = ({ user }) => {
+const ChatInterface = ({ user, onSetActiveTab }) => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -292,36 +294,317 @@ const ChatInterface = ({ user }) => {
     }
   };
 
+  const handleSurveyQuestionsReceived = (questions) => {
+    console.log("Received survey questions:", questions);
+    setSurveyQuestions(questions.questions || []);
+  };
+
   const handleGenerateSurvey = async () => {
-    if (selectedQuestions.length === 0) return;
-    
-    setIsSurveyGenerating(true);
-    
     try {
-      console.log("Finalizing survey with selected questions:", selectedQuestions.map(q => q.id));
+      setIsLoading(true);
+      setIsSurveyGenerating(true);
       
-      // Call the backend API to finalize the survey
-      const response = await axios.post(`${API_BASE_URL}/survey-agent/finalize`, {
-        selectedQuestions: selectedQuestions.map(q => q.id)
-      });
+      // 从消息中提取调查问卷标题和描述
+      const lastMessage = messages[messages.length - 1];
+      console.log("Last message content for survey generation:", lastMessage.content);
       
-      console.log("Survey finalized:", response.data);
+      // 使用默认标题和描述，或者从消息中提取
+      let title = "Customer Feedback Survey";
+      let description = "Survey generated with AI assistance";
       
-      // Add a confirmation message
-      setMessages(prev => [
-        ...prev, 
-        { 
-          role: 'assistant', 
-          content: `Great! I've generated your survey with ${selectedQuestions.length} questions. You can now find it in your "My Surveys" section.` 
+      // 尝试从消息中提取标题
+      const titleMatch = lastMessage.content.match(/# (.*?)(\n|$)/);
+      if (titleMatch) {
+        title = titleMatch[1].trim();
+      }
+      
+      // 尝试从消息中提取描述
+      const descriptionMatch = lastMessage.content.match(/## Description\s+(.*?)(\n##|\n\d+\.|\n$)/s);
+      if (descriptionMatch) {
+        description = descriptionMatch[1].trim();
+      }
+      
+      // 获取当前用户ID
+      const { data: { user } } = await supabase.auth.getUser();
+      console.log("Current user for survey creation:", user);
+      
+      if (!user) {
+        throw new Error('You must be logged in to create a survey');
+      }
+      
+      // 使用系统接收到的问题
+      console.log("Using received survey questions:", surveyQuestions);
+      
+      // 格式化问题
+      let formattedQuestions = [];
+      if (surveyQuestions && Array.isArray(surveyQuestions) && surveyQuestions.length > 0) {
+        formattedQuestions = formatQuestionsForDatabase(surveyQuestions);
+      } else {
+        console.warn("No questions received, using default questions");
+        // 设置默认问题，完全匹配所需格式
+        formattedQuestions = [
+          {
+            id: "q1",
+            question_text: "What is your favorite feature?",
+            question_type: "short_answer",
+            required: true,
+            order_index: 1
+          },
+          {
+            id: "q2",
+            question_text: "How would you rate our service?",
+            question_type: "multiple_choice_single",
+            required: true,
+            order_index: 2,
+            choices: [
+              { id: "c1", text: "Excellent", order_index: 1 },
+              { id: "c2", text: "Good", order_index: 2 },
+              { id: "c3", text: "Average", order_index: 3 },
+              { id: "c4", text: "Poor", order_index: 4 }
+            ]
+          },
+          {
+            id: "q3",
+            question_text: "Which features do you use most? (Select all that apply)",
+            question_type: "multiple_choice_multiple",
+            required: false,
+            order_index: 3,
+            choices: [
+              { id: "c1", text: "Feature A", order_index: 1 },
+              { id: "c2", text: "Feature B", order_index: 2 },
+              { id: "c3", text: "Feature C", order_index: 3 }
+            ]
+          }
+        ];
+      }
+      
+      console.log("Formatted questions for database:", formattedQuestions);
+      
+      // 准备要插入的调查问卷数据
+      const surveyInsertData = {
+        title: title,
+        description: description,
+        created_by: user.id,
+        questions: formattedQuestions,  // 使用格式化后的问题
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        is_active: true
+      };
+      
+      console.log("Inserting survey with data:", surveyInsertData);
+      
+      // 插入调查问卷
+      const { data, error } = await supabase
+        .from('surveys')
+        .insert(surveyInsertData)
+        .select()
+        .single();
+      
+      if (error) {
+        console.error("Error inserting survey:", error);
+        throw error;
+      }
+      
+      console.log('Survey saved successfully:', data);
+      
+      // 显示成功消息
+      setMessages([
+        ...messages,
+        {
+          role: 'assistant',
+          content: `Your survey "${title}" has been created successfully! You can view it in your dashboard. [View Survey](${window.location.origin}/dashboard)`
         }
       ]);
       
-      setIsSurveyGenerating(false);
     } catch (err) {
       console.error('Error generating survey:', err);
-      setError('Failed to generate survey. Please try again.');
+      setError(`Failed to generate survey: ${err.message}`);
+      
+      // 显示错误消息
+      setMessages([
+        ...messages,
+        {
+          role: 'assistant',
+          content: `I'm sorry, there was an error creating your survey: ${err.message}. Please try again.`
+        }
+      ]);
+    } finally {
+      setIsLoading(false);
       setIsSurveyGenerating(false);
     }
+  };
+
+  // 辅助函数，将我们的问题类型映射到数据库中使用的类型
+  const mapQuestionType = (type) => {
+    switch (type) {
+      case 'text':
+        return 'short_answer';
+      case 'multiple':
+        return 'multiple_choice_single';
+      case 'boolean':
+        return 'yes_no';
+      case 'rating':
+        return 'rating';
+      default:
+        return 'short_answer';
+    }
+  };
+
+  // 从消息中解析调查问卷数据
+  const parseSurveyFromMessage = (messageContent) => {
+    // 这个函数需要根据你的 AI 返回的格式来实现
+    
+    // 尝试找到标题
+    let title = 'Customer Feedback Survey'; // 默认标题
+    
+    // 提取问题
+    const questions = [];
+    const questionMatches = messageContent.match(/\d+\.\s+(.*?)(?=\d+\.|$)/gs);
+    
+    if (questionMatches) {
+      questionMatches.forEach((match, index) => {
+        const questionText = match.replace(/^\d+\.\s+/, '').trim();
+        
+        // 检测问题类型和选项
+        let type = 'text';
+        let options = null;
+        
+        // 检查是否包含选项
+        if (questionText.includes('Options:')) {
+          const parts = questionText.split('Options:');
+          const text = parts[0].trim();
+          const optionsText = parts[1].trim();
+          
+          // 解析选项
+          options = optionsText.split(',').map(opt => opt.trim());
+          
+          // 确定问题类型
+          if (optionsText.toLowerCase().includes('yes') && optionsText.toLowerCase().includes('no')) {
+            type = 'boolean';
+          } else if (optionsText.match(/\d+/g) && optionsText.match(/\d+/g).length > 1) {
+            type = 'rating';
+          } else {
+            type = 'multiple';
+          }
+          
+          questions.push({
+            text,
+            type,
+            required: index < 3, // 假设前三个问题是必填的
+            options
+          });
+        } else {
+          questions.push({
+            text: questionText,
+            type: 'text',
+            required: index < 3
+          });
+        }
+      });
+    }
+    
+    return {
+      title,
+      description: 'Survey generated with AI assistance',
+      questions
+    };
+  };
+
+  // 完全重写 formatQuestionsForDatabase 函数以匹配所需格式
+
+  const formatQuestionsForDatabase = (questions) => {
+    if (!questions || !Array.isArray(questions) || questions.length === 0) {
+      console.warn("No questions to format");
+      return [];
+    }
+    
+    console.log("Original questions to format:", questions);
+    
+    return questions.map((q, index) => {
+      // 创建基本问题结构，完全匹配所需格式
+      const formattedQuestion = {
+        id: `q${index + 1}`,  // 使用 q1, q2, q3 格式
+        question_text: q.question_text,
+        required: q.required || false,
+        order_index: index + 1  // 使用 order_index 而不是 position
+      };
+      
+      // 根据问题类型设置正确的类型
+      if (q.question_type === 'text') {
+        // 文本问题 -> short_answer
+        formattedQuestion.question_type = 'short_answer';
+        // short_answer 类型不需要 choices
+      } 
+      else if (q.question_type === 'multiple_choice') {
+        // 检查是否是多选题
+        const isMultipleSelection = q.question_text.toLowerCase().includes('select all') || 
+                                   q.question_text.toLowerCase().includes('multiple') ||
+                                   q.question_text.toLowerCase().includes('choose all');
+        
+        // 设置正确的问题类型
+        formattedQuestion.question_type = isMultipleSelection ? 
+                                         'multiple_choice_multiple' : 
+                                         'multiple_choice_single';
+        
+        // 创建 choices 数组
+        formattedQuestion.choices = [];
+        
+        // 如果有选项，使用它们
+        if (q.options && Array.isArray(q.options) && q.options.length > 0) {
+          formattedQuestion.choices = q.options.map((opt, i) => ({
+            id: `c${i + 1}`,  // 使用 c1, c2, c3 格式
+            text: opt,
+            order_index: i + 1
+          }));
+        } else {
+          // 如果没有选项，创建默认选项
+          formattedQuestion.choices = [
+            { id: "c1", text: "Option 1", order_index: 1 },
+            { id: "c2", text: "Option 2", order_index: 2 },
+            { id: "c3", text: "Option 3", order_index: 3 }
+          ];
+        }
+      }
+      else if (q.question_type === 'rating') {
+        // 评分问题 -> multiple_choice_single
+        formattedQuestion.question_type = 'multiple_choice_single';
+        
+        // 尝试从问题文本中提取评分范围
+        let minRating = 1;
+        let maxRating = 5;
+        const ratingRangeMatch = q.question_text.match(/scale\s+(?:from|of)\s+(\d+)\s+to\s+(\d+)/i);
+        if (ratingRangeMatch) {
+          minRating = parseInt(ratingRangeMatch[1]);
+          maxRating = parseInt(ratingRangeMatch[2]);
+        }
+        
+        // 创建评分选项
+        formattedQuestion.choices = [];
+        for (let i = minRating; i <= maxRating; i++) {
+          formattedQuestion.choices.push({
+            id: `c${i - minRating + 1}`,
+            text: i.toString(),
+            order_index: i - minRating + 1
+          });
+        }
+      }
+      else if (q.question_type === 'boolean') {
+        // 布尔问题 -> multiple_choice_single
+        formattedQuestion.question_type = 'multiple_choice_single';
+        
+        // 创建是/否选项
+        formattedQuestion.choices = [
+          { id: "c1", text: "Yes", order_index: 1 },
+          { id: "c2", text: "No", order_index: 2 }
+        ];
+      }
+      else {
+        // 默认为 short_answer
+        formattedQuestion.question_type = 'short_answer';
+      }
+      
+      return formattedQuestion;
+    });
   };
 
   return (

@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Navigate, Link } from 'react-router-dom';
 import { Plus, BarChart3, List, MessageSquareText, PencilLine, Settings, LogOut, User } from 'lucide-react';
@@ -107,6 +106,7 @@ const DashboardPage = () => {
                 My Surveys
               </button>
             </li>
+            {/* Analytics tab commented out
             <li>
               <button
                 onClick={() => setActiveTab('analytics')}
@@ -120,6 +120,7 @@ const DashboardPage = () => {
                 Analytics
               </button>
             </li>
+            */}
             <li>
               <button
                 onClick={() => setActiveTab('settings')}
@@ -202,6 +203,7 @@ const DashboardPage = () => {
             <List size={20} />
             <span className="text-xs mt-1">Surveys</span>
           </button>
+          {/* Analytics tab commented out
           <button
             onClick={() => setActiveTab('analytics')}
             className={`flex flex-col items-center p-3 flex-1 ${
@@ -211,6 +213,7 @@ const DashboardPage = () => {
             <BarChart3 size={20} />
             <span className="text-xs mt-1">Analytics</span>
           </button>
+          */}
           <button
             onClick={() => setActiveTab('settings')}
             className={`flex flex-col items-center p-3 flex-1 ${
@@ -233,12 +236,11 @@ const DashboardPage = () => {
                   <h1 className="text-2xl font-bold text-morandi-dark">AI Chat</h1>
                   <p className="text-morandi-dark/70">Chat with AI to generate your survey questions</p>
                 </div>
-                <button className="btn-primary flex items-center">
-                  <PencilLine size={16} className="mr-2" />
-                  New Survey
-                </button>
               </div>
-              <ChatInterface user={user} />
+              <ChatInterface 
+                user={user} 
+                onSetActiveTab={setActiveTab}
+              />
             </div>
           )}
           
@@ -249,7 +251,7 @@ const DashboardPage = () => {
                   <h1 className="text-2xl font-bold text-morandi-dark">My Surveys</h1>
                   <p className="text-morandi-dark/70">Manage your created surveys</p>
                 </div>
-                <button className="btn-primary flex items-center">
+                <button className="btn-primary flex items-center" onClick={() => setActiveTab('chat')}>
                   <Plus size={16} className="mr-2" />
                   Create Survey
                 </button>
@@ -258,6 +260,7 @@ const DashboardPage = () => {
             </div>
           )}
           
+          {/* Analytics tab content commented out
           {activeTab === 'analytics' && (
             <div className="motion-safe:animate-fade-in">
               <h1 className="text-2xl font-bold text-morandi-dark mb-6">Analytics</h1>
@@ -276,6 +279,7 @@ const DashboardPage = () => {
               </div>
             </div>
           )}
+          */}
           
           {activeTab === 'settings' && (
             <div className="motion-safe:animate-fade-in">

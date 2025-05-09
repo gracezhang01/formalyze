@@ -3,14 +3,14 @@ from flask_cors import CORS
 import os
 import sys
 import traceback
+from langgraph_survey_agent import LangGraphSurveyAgent
 
 # 添加当前目录到 Python 路径，以便能够导入 langgraph_survey_agent
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.append(current_dir)
 
-# 导入 LangGraphSurveyAgent 类
-from langgraph_survey_agent import LangGraphSurveyAgent
+# 导入 LangGraphSurveyAgent 
 
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
@@ -86,8 +86,12 @@ def finalize_survey():
         selected_questions = data.get('selectedQuestions', [])
         # 这里可以添加保存调查到数据库的逻辑
         return jsonify({"success": True, "message": "Survey finalized successfully"})
-    except Exception as e:
+    except (ValueError, KeyError, TypeError) as e:
         print(f"Error in finalize_survey: {e}")
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 400
+    except RuntimeError as e:
+        print(f"Runtime error in finalize_survey: {e}")
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
