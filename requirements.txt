@@ -1,6 +1,6 @@
 # Core dependencies
 flask==2.3.3
-python-dotenv==1.0.1
+python-dotenv==1.0.0
 
 
 # LangChain and related packages
@@ -9,7 +9,7 @@ langchain-openai==0.0.2
 langgraph==0.0.19
 
 # OpenAI
-openai==1.3.5
+openai>=1.6.1,<2.0.0
 
 # CORS support
 flask-cors==4.0.0
