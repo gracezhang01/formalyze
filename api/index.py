@@ -13,7 +13,7 @@ print("Python Version:", sys.version)
 print("Current Directory:", os.getcwd())
 print("Directory Contents:", os.listdir())
 print("Python Path:", sys.path)
-print("Environment Variables:", {k: v for k, v in os.environ.items() if not k.startswith('AWS_')})
+print("Environment Variables:", {k: v for k, v in os.environ.items() if not k.startswith(('AWS_', 'OPENAI_'))})
 print("=== Module Information ===")
 print("Current module:", __name__)
 print("Module dict:", globals().keys())
@@ -28,11 +28,28 @@ class handler(BaseHTTPRequestHandler):
     Must inherit from BaseHTTPRequestHandler as required by Vercel.
     """
     def __init__(self, *args, **kwargs):
-        print("Handler class initialized")
+        print("=== Handler Initialization ===")
+        print("Args:", args)
+        print("Kwargs:", {k: v for k, v in kwargs.items() if not k.startswith(('AWS_', 'OPENAI_'))})
         super().__init__(*args, **kwargs)
     
+    def log_request_info(self):
+        """Log detailed request information"""
+        print("\n=== Request Information ===")
+        print(f"Path: {self.path}")
+        print(f"Command: {self.command}")
+        print(f"Request version: {self.request_version}")
+        print(f"Headers: {dict(self.headers)}")
+        print("========================\n")
+
     def _send_response(self, status_code: int, body: Dict[str, Any], headers: Dict[str, str] = None):
-        """Helper method to send responses"""
+        """Helper method to send responses with logging"""
+        print(f"\n=== Sending Response ===")
+        print(f"Status Code: {status_code}")
+        print(f"Headers: {headers}")
+        print(f"Body: {body}")
+        print("=====================\n")
+
         if headers is None:
             headers = {}
             
@@ -47,25 +64,31 @@ class handler(BaseHTTPRequestHandler):
         # Merge default headers with provided headers
         headers = {**default_headers, **headers}
         
-        # Send response
-        self.send_response(status_code)
-        for key, value in headers.items():
-            self.send_header(key, value)
-        self.end_headers()
-        
-        # Send body if present
-        if body:
-            response = json.dumps(body).encode('utf-8')
-            self.wfile.write(response)
+        try:
+            # Send response
+            self.send_response(status_code)
+            for key, value in headers.items():
+                self.send_header(key, value)
+            self.end_headers()
+            
+            # Send body if present
+            if body:
+                response = json.dumps(body).encode('utf-8')
+                self.wfile.write(response)
+        except Exception as e:
+            print(f"Error sending response: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
+            raise
 
     def do_OPTIONS(self):
         """Handle OPTIONS requests for CORS"""
+        self.log_request_info()
         print("Handling OPTIONS request")
         self._send_response(HTTPStatus.OK, {})
 
     def do_GET(self):
         """Handle GET requests"""
-        print(f"Handling GET request to {self.path}")
+        self.log_request_info()
         try:
             if self.path == "/api/test":
                 print("Handling test endpoint")
@@ -95,8 +118,13 @@ class handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         """Handle POST requests"""
-        print(f"Handling POST request to {self.path}")
+        self.log_request_info()
         try:
+            # Read request body
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length) if content_length else b'{}'
+            print(f"Request body: {body.decode('utf-8')}")
+
             if self.path == '/api/survey-agent/start':
                 print("Handling survey start endpoint")
                 try:
