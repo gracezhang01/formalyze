@@ -19,7 +19,7 @@ print("Current module:", __name__)
 print("Module dict:", globals().keys())
 print("======================")
 
-# Add project root to Python path
+# Add project root to Python path haha 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 class handler(BaseHTTPRequestHandler):
