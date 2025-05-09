@@ -1,21 +1,25 @@
-# Core dependencies
-flask==2.3.3
-python-dotenv==1.0.0
+# # Core dependencies
+# flask==2.3.3
+# python-dotenv==1.0.0
 
 
-# LangChain and related packages
-langchain-core==0.1.7
-langchain-openai==0.0.2
-langgraph==0.0.19
+# # LangChain and related packages
+# langchain-core==0.1.7
+# langchain-openai==0.0.2
+# langgraph==0.0.19
 
-# OpenAI
+# # OpenAI
+# openai>=1.6.1,<2.0.0
+
+# # CORS support
+# flask-cors==4.0.0
+
+# # Database
+# supabase==2.4.0
+
+# # UUID
+# uuid
 openai>=1.6.1,<2.0.0
-
-# CORS support
-flask-cors==4.0.0
-
-# Database
-supabase==2.4.0
-
-# UUID
-uuid
+langchain-core>=0.1.8,<0.2.0
+langchain-openai==0.0.2
+python-dotenv==1.0.0
