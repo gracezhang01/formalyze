@@ -1,5 +1,3 @@
-from http.server import BaseHTTPRequestHandler
-from urllib.parse import parse_qs
 import json
 
 def handler(request):
@@ -8,23 +6,9 @@ def handler(request):
     """
     try:
         # Extract request information
-        method = request.get('method', 'GET')
+        method = request.get('httpMethod', 'GET')  # Vercel uses httpMethod, not method
         path = request.get('path', '')
-        query = request.get('query', {})
-        body = request.get('body', '{}')
-
-        # Handle CORS preflight
-        if method == 'OPTIONS':
-            return {
-                'statusCode': 204,
-                'headers': {
-                    'Access-Control-Allow-Credentials': 'true',
-                    'Access-Control-Allow-Origin': '*',
-                    'Access-Control-Allow-Methods': 'GET,OPTIONS,PATCH,DELETE,POST,PUT',
-                    'Access-Control-Allow-Headers': 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
-                }
-            }
-
+        
         # Test endpoint
         if path == '/api/test':
             return {
