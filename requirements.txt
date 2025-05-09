@@ -17,8 +17,6 @@
 # # Database
 # supabase==2.4.0
 
-# # UUID
-# uuid
 openai>=1.6.1,<2.0.0
 langchain-core>=0.1.8,<0.2.0
 langchain-openai==0.0.2
