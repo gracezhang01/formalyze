@@ -1,3 +1,4 @@
+from http.server import BaseHTTPRequestHandler
 import json
 import os
 import sys
@@ -8,12 +9,23 @@ print("Current directory:", os.getcwd())
 print("Files in current directory:", os.listdir("."))
 print("Python path:", sys.path)
 
-def handler(event, context):
+def handler(request):
     """Vercel Serverless function handler"""
     try:
         # Get request data
-        path = event.get('path', '')
-        method = event.get('httpMethod', 'GET')
+        if isinstance(request, dict):
+            path = request.get('path', '')
+            method = request.get('httpMethod', 'GET')
+        else:
+            # Handle the case where request might be a different type
+            return {
+                'statusCode': 400,
+                'body': json.dumps({'error': 'Invalid request format'}),
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                }
+            }
         
         print(f"Processing request: {path} ({method})")
         
@@ -32,7 +44,7 @@ def handler(event, context):
         # Add your other API endpoints here
         # These will be called for all paths that don't start with /api/survey-agent
         
-        # Default return 404 1
+        # Default return 404
         return {
             'statusCode': 404,
             'body': json.dumps({'error': 'Not found', 'path': path, 'method': method}),

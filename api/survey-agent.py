@@ -22,12 +22,24 @@ except ImportError as e:
 # Global variable to store agent instances (Note: this may reset between calls in serverless environments)
 agent_instances = {}
 
-def handler(event, context):
+def handler(request):
     """Vercel serverless function handler - unified handler for all survey-agent routes"""
     try:
         # Get request data
-        path = event.get('path', '')
-        method = event.get('httpMethod', 'GET')
+        if isinstance(request, dict):
+            path = request.get('path', '')
+            method = request.get('httpMethod', 'GET')
+            headers = request.get('headers', {})
+            body = request.get('body', '{}')
+        else:
+            return {
+                'statusCode': 400,
+                'body': json.dumps({'error': 'Invalid request format'}),
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                }
+            }
         
         print(f"Processing request: {path} ({method})")
         
@@ -40,11 +52,11 @@ def handler(event, context):
                     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
                     'Access-Control-Allow-Headers': 'Content-Type, x-session-id'
                 },
-                'body': ''
+                'body': json.dumps({})
             }
         
         # Get or create agent instance
-        session_id = event.get('headers', {}).get('x-session-id', 'default_session')
+        session_id = headers.get('x-session-id', 'default_session')
         
         if session_id not in agent_instances:
             print(f"Creating new agent instance for session {session_id}")
@@ -59,18 +71,11 @@ def handler(event, context):
         
         # Handle different operations based on path and method
         if path.endswith('/start') and method == 'POST':
-            # Start conversation
             return handle_start(agent)
-        
         elif path.endswith('/process') and method == 'POST':
-            # Process user response
-            return handle_process(agent, event)
-        
+            return handle_process(agent, {'body': body})
         elif path.endswith('/survey') and method == 'GET':
-            # Get generated survey questions
             return handle_survey(agent)
-        
-        # Default test endpoint
         elif path.endswith('/test') and method == 'GET':
             return {
                 'statusCode': 200,
@@ -96,7 +101,7 @@ def handler(event, context):
         traceback.print_exc()
         return {
             'statusCode': 500,
-            'body': json.dumps({'error': f"Server error: {str(e)}"}),
+            'body': json.dumps({'error': str(e)}),
             'headers': {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*'
