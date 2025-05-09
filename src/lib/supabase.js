@@ -20,6 +20,12 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true
+  },
+  // Enable anonymous access
+  global: {
+    headers: {
+      'X-Client-Info': 'supabase-js-v2'
+    }
   }
 });
 

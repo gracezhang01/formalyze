@@ -42,15 +42,49 @@ const PublicSurveyPage = () => {
     e.preventDefault();
     
     try {
-      const { error } = await supabase
-        .from('survey_responses')
-        .insert({
-          survey_id: id,
-          answers: answers,
-          submitted_at: new Date().toISOString()
-        });
+      // Format the answers into the expected structure
+      const formattedAnswers = Object.entries(answers).map(([questionId, answer]) => ({
+        question_id: questionId,
+        answer: answer,
+        submitted_at: new Date().toISOString()
+      }));
 
-      if (error) throw error;
+      // First get the current survey to access its responses
+      const { data: currentSurvey, error: fetchError } = await supabase
+        .from('surveys')
+        .select('responses')
+        .eq('id', id)
+        .limit(1);
+
+      if (fetchError) {
+        console.error('Error fetching current survey:', fetchError);
+        throw fetchError;
+      }
+
+      // Get the current responses array or initialize it
+      const currentResponses = (currentSurvey?.[0]?.responses || []);
+
+      // Create new response object
+      const newResponse = {
+        answers: formattedAnswers,
+        submitted_at: new Date().toISOString(),
+        // Mark as anonymous response
+        is_anonymous: true
+      };
+
+      // Update the survey with the new response
+      const { error: updateError } = await supabase
+        .from('surveys')
+        .update({
+          responses: [...currentResponses, newResponse]
+        })
+        .eq('id', id);
+
+      if (updateError) {
+        console.error('Error updating survey:', updateError);
+        throw updateError;
+      }
+
       setSubmitted(true);
     } catch (error) {
       console.error('Error submitting survey:', error);

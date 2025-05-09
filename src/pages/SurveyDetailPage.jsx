@@ -452,7 +452,27 @@ const SurveyDetailPage = () => {
         .single();
 
       if (error) throw error;
-      console.log('Fetched survey:', data);
+      
+      // Debug logging
+      console.log('Fetched survey data:', {
+        id: data.id,
+        title: data.title,
+        questions: data.questions,
+        responses: data.responses
+      });
+      
+      // Log each response structure
+      if (data.responses) {
+        data.responses.forEach((response, index) => {
+          console.log(`Response ${index + 1} structure:`, {
+            isArray: Array.isArray(response),
+            hasAnswers: response.answers ? 'yes' : 'no',
+            timestamp: response.timestamp || (response.answers && response.answers[0]?.submitted_at),
+            data: response
+          });
+        });
+      }
+
       setSurvey(data);
     } catch (error) {
       console.error('Error fetching survey:', error);
@@ -616,31 +636,44 @@ const SurveyDetailPage = () => {
 
     return (
       <div className="space-y-6">
-        {survey.responses.map((response, index) => (
-          <div key={index} className="card p-6">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-sm text-morandi-dark/70">
-                Response #{index + 1}
-              </span>
-              <span className="text-sm text-morandi-dark/70">
-                {new Date(response.timestamp).toLocaleString()}
-              </span>
+        {survey.responses.map((response, index) => {
+          // Handle both array responses and single response objects
+          const answers = Array.isArray(response) ? response : response.answers || [];
+          const timestamp = response.timestamp || answers[0]?.submitted_at;
+          
+          return (
+            <div key={index} className="card p-6">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-sm text-morandi-dark/70">
+                  Response #{index + 1}
+                </span>
+                <span className="text-sm text-morandi-dark/70">
+                  {timestamp ? new Date(timestamp).toLocaleString() : 'No timestamp'}
+                </span>
+              </div>
+              <div className="space-y-4">
+                {answers.map((answer, answerIndex) => {
+                  // Find the matching question from the survey questions
+                  const question = survey.questions.find(q => q.id === answer.question_id);
+                  if (!question) return null;
+                  
+                  return (
+                    <div key={answerIndex} className="border-b border-morandi-gray/20 pb-4 last:border-0">
+                      <h4 className="font-medium text-morandi-dark mb-2">
+                        {question.question_text}
+                      </h4>
+                      <p className="text-morandi-dark/70">
+                        {Array.isArray(answer.answer) 
+                          ? answer.answer.join(', ') 
+                          : answer.answer}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            <div className="space-y-4">
-              {response.answers.map((answer, answerIndex) => {
-                const question = survey.questions.find(q => q.id === answer.question_id);
-                return (
-                  <div key={answerIndex} className="border-b border-morandi-gray/20 pb-4 last:border-0">
-                    <h4 className="font-medium text-morandi-dark mb-2">{question.question_text}</h4>
-                    <p className="text-morandi-dark/70">
-                      {Array.isArray(answer.answer) ? answer.answer.join(', ') : answer.answer}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     );
   };

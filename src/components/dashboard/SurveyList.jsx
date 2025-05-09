@@ -57,93 +57,77 @@ const SurveyCard = ({ survey, onDelete }) => {
   });
 
   return (
-    <div className="card card-hover relative">
-      {/* Status Badge */}
-      <div className={`absolute top-4 right-4 px-2 py-1 rounded-full text-xs ${getStatusColor(survey.status)}`}>
-        {survey.status.charAt(0).toUpperCase() + survey.status.slice(1)}
-      </div>
-      
-      <h3 className="font-medium text-lg mb-2">{survey.title}</h3>
-      
-      {survey.description && (
-        <p className="text-sm text-morandi-dark/70 mb-4">{survey.description}</p>
-      )}
-      
-      <div className="flex items-center space-x-4 text-sm text-morandi-dark/70 mb-4">
-        <span>{new Date(survey.createdAt).toLocaleDateString()}</span>
-        <span>•</span>
-        <span>{survey.questions} questions</span>
-        <span>•</span>
-        <span>{survey.responses} responses</span>
-      </div>
-
-      {/* Survey actions */}
-      <div className="flex items-center">
-        <div className="flex-grow">
-          <Link to={`/survey/${survey.id}`} className="btn-text flex items-center">
-            <Eye size={16} className="mr-1" />
-            View Survey
-          </Link>
+    <div className="card card-hover relative p-6">
+      <div className="flex flex-col h-full">
+        {/* Header with title and status */}
+        <div className="flex justify-between items-start gap-4">
+          <h3 className="font-medium text-lg text-morandi-dark break-words flex-1">{survey.title}</h3>
+          <div className={`shrink-0 px-2 py-1 rounded-full text-xs ${getStatusColor(survey.status)} whitespace-nowrap`}>
+            {survey.status.charAt(0).toUpperCase() + survey.status.slice(1)}
+          </div>
         </div>
         
-        <div className="relative">
-          <button
-            type="button"
-            className="p-2 hover:bg-background-subtle rounded-full transition-colors"
-            onClick={() => setShowActions(!showActions)}
-            aria-label="More actions"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="12" cy="6" r="2" fill="currentColor" />
-              <circle cx="12" cy="12" r="2" fill="currentColor" />
-              <circle cx="12" cy="18" r="2" fill="currentColor" />
-            </svg>
-          </button>
+        {/* Description */}
+        {survey.description && (
+          <p className="text-sm text-morandi-dark/70 mt-2 mb-4 break-words line-clamp-2">{survey.description}</p>
+        )}
+        
+        {/* Survey info */}
+        <div className="flex flex-wrap items-center gap-2 text-sm text-morandi-dark/70 mb-4">
+          <span className="break-words">{new Date(survey.createdAt).toLocaleDateString()}</span>
+          <span>•</span>
+          <span>{survey.questions} questions</span>
+          <span>•</span>
+          <span>{survey.responses} responses</span>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center mt-auto">
+          <div className="flex-grow">
+            <Link to={`/survey/${survey.id}`} className="btn-text flex items-center">
+              <Eye size={16} className="mr-1" />
+              View Survey
+            </Link>
+          </div>
           
-          {showActions && (
-            <div className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-morandi-gray/20 py-1 z-10">
-              <button 
-                type="button"
-                className="flex items-center w-full px-4 py-2 text-sm text-morandi-dark hover:bg-background-subtle transition-colors text-left"
-              >
-                <Edit size={16} className="mr-3 text-morandi-blue" />
-                Edit Survey
-              </button>
-              <button 
-                type="button"
-                className="flex items-center w-full px-4 py-2 text-sm text-morandi-dark hover:bg-background-subtle transition-colors text-left"
-              >
-                <BarChart2 size={16} className="mr-3 text-morandi-green" />
-                View Results
-              </button>
-              <button 
-                type="button"
-                className="flex items-center w-full px-4 py-2 text-sm text-morandi-dark hover:bg-background-subtle transition-colors text-left"
-              >
-                <Share2 size={16} className="mr-3 text-morandi-blue" />
-                Share Survey
-              </button>
-              <button 
-                type="button"
-                className="flex items-center w-full px-4 py-2 text-sm text-morandi-dark hover:bg-background-subtle transition-colors text-left"
-              >
-                <Download size={16} className="mr-3 text-morandi-dark/70" />
-                Export Responses
-              </button>
-              <div className="border-t border-morandi-gray/20 my-1"></div>
-              <button 
-                type="button"
-                onClick={() => {
-                  onDelete(survey.id);
-                  setShowActions(false);
-                }}
-                className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors text-left"
-              >
-                <Trash2 size={16} className="mr-3" />
-                Delete Survey
-              </button>
-            </div>
-          )}
+          <div className="relative">
+            <button
+              type="button"
+              className="p-2 hover:bg-background-subtle rounded-full transition-colors"
+              onClick={() => setShowActions(!showActions)}
+              aria-label="More actions"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="6" r="2" fill="currentColor" />
+                <circle cx="12" cy="12" r="2" fill="currentColor" />
+                <circle cx="12" cy="18" r="2" fill="currentColor" />
+              </svg>
+            </button>
+            
+            {showActions && (
+              <div className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-morandi-gray/20 py-1 z-10">
+                <button 
+                  type="button"
+                  className="flex items-center w-full px-4 py-2 text-sm text-morandi-dark hover:bg-background-subtle transition-colors text-left"
+                >
+                  <Share2 size={16} className="mr-3 text-morandi-blue" />
+                  Share Survey
+                </button>
+                <div className="border-t border-morandi-gray/20 my-1"></div>
+                <button 
+                  type="button"
+                  onClick={() => {
+                    onDelete(survey.id);
+                    setShowActions(false);
+                  }}
+                  className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors text-left"
+                >
+                  <Trash2 size={16} className="mr-3" />
+                  Delete Survey
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

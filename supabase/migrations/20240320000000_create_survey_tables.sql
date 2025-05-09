@@ -11,29 +11,34 @@ CREATE TABLE public.surveys (
     is_active BOOLEAN DEFAULT true
 );
 
--- Enable Row Level Security
-ALTER TABLE public.surveys ENABLE ROW LEVEL SECURITY;
+-- Enable RLS
+alter table "public"."surveys" enable row level security;
 
--- Create policies
-CREATE POLICY "Users can view their own surveys"
-    ON public.surveys
-    FOR SELECT
-    USING (auth.uid() = created_by);
+-- Policy to allow anyone to read surveys (for shared links)
+create policy "Allow anyone to read surveys"
+on "public"."surveys"
+for select
+to anon, authenticated
+using (true);
 
-CREATE POLICY "Users can create their own surveys"
-    ON public.surveys
-    FOR INSERT
-    WITH CHECK (auth.uid() = created_by);
+-- Policy to allow authenticated users to manage their own surveys
+create policy "Allow users to manage their own surveys"
+on "public"."surveys"
+for all 
+to authenticated
+using (auth.uid() = created_by)
+with check (auth.uid() = created_by);
 
-CREATE POLICY "Users can update their own surveys"
-    ON public.surveys
-    FOR UPDATE
-    USING (auth.uid() = created_by);
+-- Policy to allow anyone to update survey responses
+create policy "Allow anyone to update survey responses"
+on "public"."surveys"
+for update
+to anon, authenticated
+using (true)
+with check (true);
 
-CREATE POLICY "Users can delete their own surveys"
-    ON public.surveys
-    FOR DELETE
-    USING (auth.uid() = created_by);
+-- Add comment to explain the policies
+comment on table "public"."surveys" is 'Surveys table with RLS policies for public access and response collection';
 
 -- Create indexes for better performance
 CREATE INDEX idx_surveys_created_by ON public.surveys(created_by);
