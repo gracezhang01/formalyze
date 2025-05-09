@@ -3,6 +3,14 @@ import { Send, Download, Check, ChevronUp, ChevronDown, Sparkles, AlertCircle } 
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import supabase from '../../lib/supabase';
+import OpenAI from 'openai';
+
+// 在组件外部创建OpenAI客户端
+// 使用环境变量获取API密钥
+const openai = new OpenAI({
+  apiKey: import.meta.env.VITE_OPENAI_API_KEY, // 从环境变量获取API密钥
+  dangerouslyAllowBrowser: true // 这个选项允许在浏览器中使用
+});
 
 const QuestionSuggestion = ({ question, isSelected, onToggle }) => {
   return (
@@ -146,8 +154,8 @@ const ChatInterface = ({ user, onSetActiveTab }) => {
     },
     {
       id: 3,
-      text: "What is the most important feedback you want to gather from respondents?",
-      hint: ""
+      text: "How many questions would you like the survey to include?",
+      hint: "5-10"
     },
     {
       id: 4,
@@ -266,102 +274,116 @@ const ChatInterface = ({ user, onSetActiveTab }) => {
     setIsLoading(true);
     
     try {
-      // Call OpenAI API to generate survey questions
-      // This is a mock implementation - replace with actual OpenAI API call
-      
-      const prompt = `Generate a professional survey based on the following requirements:
-      
-Purpose: ${userResponses[1]}
-Target audience: ${userResponses[2]}
-Number of questions: ${userResponses[3]}
-Topics to cover: ${userResponses[4]}
-Question types: ${userResponses[5]}
-
-Format each question with the following structure:
-{
-  "question_text": "The question text",
-  "question_type": "text/multiple_choice/rating/boolean",
-  "required": true/false,
-  "options": ["Option 1", "Option 2"] // Only for multiple_choice
-}`;
-
-      // Simulating API call to OpenAI
-      console.log("Would call OpenAI with prompt:", prompt);
-      
-      // Simulate API response
-      // In a real implementation, replace this with an actual API call
-      const mockOpenAIResponse = {
-        questions: [
-          {
-            question_text: "How satisfied are you with our product's ease of use?",
-            question_type: "rating",
-            required: true,
-            options: ["1", "2", "3", "4", "5"]
-          },
-          {
-            question_text: "Which features do you use most often? (Select all that apply)",
-            question_type: "multiple_choice",
-            required: true,
-            options: ["Feature A", "Feature B", "Feature C", "Feature D"]
-          },
-          {
-            question_text: "Have you encountered any technical issues while using our product?",
-            question_type: "boolean",
-            required: true
-          },
-          {
-            question_text: "What improvements would you suggest for our product?",
-            question_type: "text",
-            required: false
-          },
-          {
-            question_text: "How likely are you to recommend our product to others?",
-            question_type: "rating",
-            required: true,
-            options: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
-          }
-        ]
+      // 准备用户响应数据
+      const userResponsesData = {
+        purpose: userResponses[1],
+        target_audience: userResponses[2],
+        important_feedback: userResponses[3],
+        topics: userResponses[4],
+        question_types: userResponses[5]
       };
       
-      // In a real implementation, you would call the OpenAI API something like this:
-      /*
-      const response = await axios.post('https://api.openai.com/v1/chat/completions', {
-        model: "gpt-4",
-        messages: [
-          { role: "system", content: "You are a helpful assistant that generates survey questions." },
-          { role: "user", content: prompt }
-        ],
-        temperature: 0.7,
-      }, {
-        headers: {
-          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-          'Content-Type': 'application/json'
+      console.log("Preparing to generate survey questions:", userResponsesData);
+      
+      // 构建提示词
+      const prompt = `
+        Generate a professional survey based on the following requirements:
+        
+        Purpose: ${userResponsesData.purpose}
+        Target audience: ${userResponsesData.target_audience}
+        Important feedback: ${userResponsesData.important_feedback}
+        Topics to cover: ${userResponsesData.topics}
+        Question types: ${userResponsesData.question_types}
+        
+        Please generate 5-8 appropriate survey questions. For each question, specify:
+        1. The question text
+        2. The question type (multiple_choice, text, rating, boolean)
+        3. For multiple choice questions, provide 3-5 options
+        
+        Format your response as a JSON array of questions, each with the following structure:
+        {
+          "question_text": "What is your opinion on our product?",
+          "question_type": "multiple_choice",
+          "options": ["Very satisfied", "Satisfied", "Neutral", "Dissatisfied", "Very dissatisfied"]
         }
+        
+        For text questions, omit the options field.
+        For rating questions, specify in the question text what scale to use (e.g., 1-5, 1-10).
+        For boolean questions, no options are needed as they are always Yes/No.
+        
+        IMPORTANT: Your response must be valid JSON. Do not include any explanations or text outside the JSON array.
+      `;
+      
+      // 调用OpenAI API
+      const response = await openai.chat.completions.create({
+        model: "o1-mini",
+        messages: [
+          {
+            role: "user",
+            content: "You are a professional survey designer. Create effective survey questions based on these requirements:\n\n" + prompt
+          }
+        ]
       });
       
-      // Parse the response
-      const generatedQuestions = JSON.parse(response.data.choices[0].message.content);
-      */
+      // 解析响应
+      let generatedQuestions = [];
       
-      // For now, use the mock response
-      const generatedQuestions = mockOpenAIResponse.questions;
+      try {
+        // 尝试从响应中提取JSON
+        const content = response.choices[0].message.content;
+        
+        // 查找JSON部分
+        const jsonMatch = content.match(/\[\s*\{.*\}\s*\]/s);
+        if (jsonMatch) {
+          generatedQuestions = JSON.parse(jsonMatch[0]);
+        } else {
+          // 如果没有找到JSON数组，尝试解析整个内容
+          generatedQuestions = JSON.parse(content);
+        }
+        
+        console.log("Successfully parsed questions:", generatedQuestions);
+      } catch (parseError) {
+        console.error("Error parsing AI response:", parseError);
+        
+        // 如果解析失败，使用默认问题
+        generatedQuestions = [
+          {
+            question_text: "How satisfied are you with our product?",
+            question_type: "multiple_choice",
+            options: ["Very satisfied", "Satisfied", "Neutral", "Dissatisfied", "Very dissatisfied"]
+          },
+          {
+            question_text: "What features do you use most often?",
+            question_type: "text"
+          },
+          {
+            question_text: "How likely are you to recommend our product to others? (Scale 1-10)",
+            question_type: "rating"
+          },
+          {
+            question_text: "Would you purchase from us again in the future?",
+            question_type: "boolean"
+          }
+        ];
+      }
       
-      // Set the generated questions
+      // 设置生成的问题
       setSurveyQuestions(generatedQuestions);
       
-      // Format questions for display
+      // 格式化问题用于显示
       const formattedQuestions = generatedQuestions.map((q, index) => ({
         id: `q${index + 1}`,
         text: q.question_text,
         type: q.question_type,
-        description: q.question_type === 'multiple_choice' ? `Options: ${q.options?.join(', ')}` : undefined
+        description: q.question_type === 'multiple_choice' ? 
+          `Options: ${q.options?.join(', ')}` : undefined
       }));
       
-      // Update the UI with the generated questions
+      // 更新UI显示生成的问题
       setQuestionSuggestions(formattedQuestions);
       setSelectedQuestions(formattedQuestions);
       
-      // Add a message showing the generated questions
+      // 添加消息显示生成的问题
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: `# Survey Questions\n\n## Description\nBased on your inputs, I've generated the following survey questions:\n\n${generatedQuestions.map((q, i) => 
@@ -372,7 +394,7 @@ Format each question with the following structure:
       setIsLoading(false);
     } catch (err) {
       console.error('Error generating survey questions:', err);
-      setError('Failed to generate survey questions. Please try again.');
+      setError(`Failed to generate survey questions: ${err.message}`);
       setIsLoading(false);
     }
   };
