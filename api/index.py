@@ -18,12 +18,14 @@ def handler(request, response):
         method = request.get("method", "GET")
         
         # 测试API端点
-        if path == "/api/test" and method == "GET":
-            return {
-                "statusCode": 200,
-                "body": {"message": "API is working!"},
-                "headers": {"Content-Type": "application/json"}
+        if path == "/api/test":
+           return {
+            'statusCode': 200,
+            'body': {'message': 'API is working!'},
+            'headers': {
+                'Content-Type': 'application/json'
             }
+        }
         
         # 开始对话
         elif path == "/api/survey-agent/start" and method == "POST":

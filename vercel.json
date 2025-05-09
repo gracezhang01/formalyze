@@ -2,7 +2,7 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/test.py",
+      "src": "api/index.py",
       "use": "@vercel/python",
       "config": {
         "runtime": "python3.9",
@@ -13,18 +13,26 @@
       "src": "package.json",
       "use": "@vercel/node",
       "config": {
-        "buildCommand": "vite build"
+        "buildCommand": "vite build",
+        "outputDirectory": "dist"
       }
     }
   ],
   "routes": [
     {
-      "src": "/api/test",
-      "dest": "api/test.py"
+      "src": "/api/(.*)",
+      "dest": "api/index.py"
+    },
+    {
+      "src": "/assets/(.*)",
+      "dest": "/dist/assets/$1"
+    },
+    {
+      "handle": "filesystem"
     },
     {
       "src": "/(.*)",
-      "dest": "/$1"
+      "dest": "/dist/index.html"
     }
   ]
 }
