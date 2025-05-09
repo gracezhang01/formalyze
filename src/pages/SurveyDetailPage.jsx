@@ -430,6 +430,14 @@ const SurveyDetailPage = () => {
   const [showShareModal, setShowShareModal] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  const surveyUrl = `${window.location.origin}/s/${id}`;
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(surveyUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   useEffect(() => {
     fetchSurvey();
   }, [id]);
@@ -452,17 +460,6 @@ const SurveyDetailPage = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleShare = () => {
-    setShowShareModal(true);
-  };
-
-  const copyShareLink = () => {
-    const shareLink = `${window.location.origin}/s/${id}`;
-    navigator.clipboard.writeText(shareLink);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   };
 
   if (loading) {
@@ -663,7 +660,7 @@ const SurveyDetailPage = () => {
           <div className="flex items-center space-x-4">
             <button 
               className="btn-primary flex items-center"
-              onClick={handleShare}
+              onClick={() => setShowShareModal(true)}
             >
               <Share2 size={16} className="mr-2" />
               Share Survey
@@ -677,28 +674,28 @@ const SurveyDetailPage = () => {
             <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
               <h3 className="text-lg font-medium text-morandi-dark mb-4">Share Survey</h3>
               <p className="text-morandi-dark/70 mb-4">
-                Share this link with others to collect responses. Anyone with the link can fill out your survey.
+                Share this link with others to allow them to fill out your survey. They won't be able to edit the survey or see other responses.
               </p>
-              <div className="flex items-center gap-2 mb-6">
+              <div className="flex items-center mb-6">
                 <input
                   type="text"
-                  value={`${window.location.origin}/s/${id}`}
+                  value={surveyUrl}
                   readOnly
                   className="input-field flex-grow"
                 />
-                <button
-                  onClick={copyShareLink}
-                  className="btn-primary flex items-center whitespace-nowrap"
+                <button 
+                  className="btn-primary ml-2 flex items-center"
+                  onClick={copyLink}
                 >
                   {copied ? (
                     <>
-                      <Check size={16} className="mr-2" />
+                      <Check size={16} className="mr-1" />
                       Copied
                     </>
                   ) : (
                     <>
-                      <Clipboard size={16} className="mr-2" />
-                      Copy Link
+                      <Clipboard size={16} className="mr-1" />
+                      Copy
                     </>
                   )}
                 </button>

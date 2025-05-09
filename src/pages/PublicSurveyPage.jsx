@@ -9,7 +9,7 @@ const PublicSurveyPage = () => {
   const [survey, setSurvey] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [responses, setResponses] = useState({});
+  const [answers, setAnswers] = useState({});
   const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
@@ -35,8 +35,8 @@ const PublicSurveyPage = () => {
     }
   };
 
-  const handleResponseChange = (questionId, value) => {
-    setResponses(prev => ({
+  const handleAnswerChange = (questionId, value) => {
+    setAnswers(prev => ({
       ...prev,
       [questionId]: value
     }));
@@ -47,19 +47,17 @@ const PublicSurveyPage = () => {
     
     try {
       const { error } = await supabase
-        .from('responses')
+        .from('survey_responses')
         .insert({
           survey_id: id,
-          answers: Object.entries(responses).map(([question_id, answer]) => ({
-            question_id,
-            answer
-          }))
+          answers: answers,
+          submitted_at: new Date().toISOString()
         });
 
       if (error) throw error;
       setSubmitted(true);
     } catch (error) {
-      console.error('Error submitting response:', error);
+      console.error('Error submitting survey:', error);
       setError(error.message);
     }
   };
@@ -131,7 +129,7 @@ const PublicSurveyPage = () => {
               </svg>
             </div>
             <h2 className="text-xl font-bold text-morandi-dark mb-4">Thank You!</h2>
-            <p className="text-morandi-dark/70 mb-6">Your response has been submitted successfully.</p>
+            <p className="text-morandi-dark/70 mb-6">Your responses have been submitted successfully.</p>
             <button
               onClick={() => navigate('/')}
               className="btn-primary"
@@ -180,18 +178,19 @@ const PublicSurveyPage = () => {
                 </div>
               </div>
 
+              {/* Question Input */}
               {question.type === 'rating' && (
                 <div className="flex items-center gap-2 mt-2">
                   {question.options.map(option => (
                     <button
                       key={option}
                       type="button"
-                      onClick={() => handleResponseChange(question.id, option)}
+                      onClick={() => handleAnswerChange(question.id, option)}
                       className={`w-10 h-10 rounded-lg border ${
-                        responses[question.id] === option
+                        answers[question.id] === option
                           ? 'border-morandi-blue bg-morandi-blue/10 text-morandi-blue'
                           : 'border-morandi-gray/40 bg-background-subtle hover:bg-morandi-blue/10 hover:border-morandi-blue'
-                      } transition-colors`}
+                      } flex items-center justify-center transition-colors`}
                     >
                       {option}
                     </button>
@@ -208,8 +207,7 @@ const PublicSurveyPage = () => {
                         id={`${question.id}-${option}`}
                         name={question.id}
                         value={option}
-                        onChange={(e) => handleResponseChange(question.id, e.target.value)}
-                        required={question.required}
+                        onChange={(e) => handleAnswerChange(question.id, e.target.value)}
                         className="w-4 h-4 text-morandi-blue"
                       />
                       <label htmlFor={`${question.id}-${option}`} className="ml-2 text-morandi-dark">
@@ -222,19 +220,23 @@ const PublicSurveyPage = () => {
 
               {question.type === 'open' && (
                 <textarea
-                  className="input-field mt-2 resize-none h-24"
+                  value={answers[question.id] || ''}
+                  onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+                  className="input-field mt-2 w-full"
+                  rows={3}
                   placeholder="Type your answer here..."
-                  value={responses[question.id] || ''}
-                  onChange={(e) => handleResponseChange(question.id, e.target.value)}
-                  required={question.required}
                 />
               )}
             </div>
           ))}
 
           <div className="flex justify-end">
-            <button type="submit" className="btn-primary">
-              Submit Response
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={Object.keys(answers).length === 0}
+            >
+              Submit Survey
             </button>
           </div>
         </form>
