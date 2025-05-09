@@ -85,7 +85,7 @@ const SurveyPreview = ({ selectedQuestions, onGenerateSurvey, isSurveyGenerating
             </>
           ) : (
             <div className="text-center py-6">
-              <p className="text-morandi-dark/70">Select questions from suggestions to build your survey</p>
+              <p className="text-morandi-dark/70">Complete all questions to build your survey</p>
             </div>
           )}
         </div>
@@ -132,6 +132,35 @@ const ChatMessage = ({ message, isUser }) => {
 };
 
 const ChatInterface = ({ user, onSetActiveTab }) => {
+  // 预定义的五个问题
+  const predefinedQuestions = [
+    {
+      id: 1,
+      text: "What is the primary purpose of your survey?",
+      hint: "e.g., customer satisfaction, market research, employee feedback"
+    },
+    {
+      id: 2,
+      text: "Who is your target audience for this survey?",
+      hint: "e.g., existing customers, potential customers, employees"
+    },
+    {
+      id: 3,
+      text: "How many questions would you like the survey to include?",
+      hint: "Recommended: 5-10 for higher completion rates"
+    },
+    {
+      id: 4,
+      text: "What specific topics or areas do you want to cover in your survey?",
+      hint: "e.g., product features, service quality, user experience"
+    },
+    {
+      id: 5,
+      text: "What type of questions would be most helpful for your analysis?",
+      hint: "e.g., multiple choice, rating scales, open-ended questions"
+    }
+  ];
+
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -139,23 +168,15 @@ const ChatInterface = ({ user, onSetActiveTab }) => {
   const [selectedQuestions, setSelectedQuestions] = useState([]);
   const [isSurveyGenerating, setIsSurveyGenerating] = useState(false);
   const [error, setError] = useState('');
-  const [conversationStarted, setConversationStarted] = useState(false);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [userResponses, setUserResponses] = useState({});
   const [isConversationComplete, setIsConversationComplete] = useState(false);
   const [surveyQuestions, setSurveyQuestions] = useState([]);
   const chatEndRef = useRef(null);
   const navigate = useNavigate();
   
-  // 设置 API 基础 URL - 使用相对路径
+  // API base URL for OpenAI
   const API_BASE_URL = '/api';
-
-  // 在 axios 请求中添加 CORS 配置
-  const axiosConfig = {
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json'
-    },
-    withCredentials: false // 不发送凭证
-  };
 
   const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -165,50 +186,29 @@ const ChatInterface = ({ user, onSetActiveTab }) => {
     scrollToBottom();
   }, [messages]);
 
-  // Start conversation with the agent when component mounts
+  // Start conversation with first predefined question when component mounts
   useEffect(() => {
     startConversation();
   }, []);
 
-  const startConversation = async () => {
-    try {
-      setIsLoading(true);
-      console.log("Starting conversation with API at:", `${API_BASE_URL}/survey-agent/start`);
-      
-      const response = await fetch(`${API_BASE_URL}/survey-agent/start`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        mode: 'cors'
-      });
-      
-      console.log("Response status:", response.status);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      console.log("Received data:", data);
-      
-      if (!data.question) {
-        throw new Error("No question received from API");
-      }
-      
-      setMessages([{ 
+  const startConversation = () => {
+    // Show welcome message and first question
+    setMessages([
+      { 
         role: 'assistant', 
-        content: data.question
-      }]);
-      
-      setConversationStarted(true);
-      setIsLoading(false);
-    } catch (err) {
-      console.error('Error starting conversation:', err);
-      setError(`Failed to start conversation. ${err.message}`);
-      setIsLoading(false);
-      setConversationStarted(false);
-    }
+        content: "Welcome to the Survey Creator! I'll help you build a custom survey. Please answer these 5 questions to get started."
+      },
+      {
+        role: 'assistant',
+        content: `${predefinedQuestions[0].text}\n\nHint: ${predefinedQuestions[0].hint}`
+      }
+    ]);
+    setCurrentQuestionIndex(0);
+    setUserResponses({});
+    setIsConversationComplete(false);
+    setQuestionSuggestions([]);
+    setSelectedQuestions([]);
+    setError('');
   };
 
   const sendMessage = async (e) => {
@@ -219,68 +219,160 @@ const ChatInterface = ({ user, onSetActiveTab }) => {
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
-    setError('');
     
     try {
-      console.log("Sending request to process with:", { userResponse: userMessage.content });
+      // Store user response
+      setUserResponses(prev => ({
+        ...prev,
+        [predefinedQuestions[currentQuestionIndex].id]: input.trim()
+      }));
       
-      // Call the backend API to process the user's response
-      const response = await axios.post(`${API_BASE_URL}/survey-agent/process`, {
-        userResponse: userMessage.content
+      // Move to next question or complete
+      const nextIndex = currentQuestionIndex + 1;
+      
+      if (nextIndex < predefinedQuestions.length) {
+        // Show next question
+        setTimeout(() => {
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: `${predefinedQuestions[nextIndex].text}\n\nHint: ${predefinedQuestions[nextIndex].hint}`
+          }]);
+          setCurrentQuestionIndex(nextIndex);
+          setIsLoading(false);
+        }, 500); // Small delay to simulate thinking
+      } else {
+        // All questions answered, generate survey questions
+        setTimeout(() => {
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: "Thank you for your responses! I'll now generate survey questions based on your input. This may take a moment..."
+          }]);
+          
+          setIsLoading(false);
+          setIsConversationComplete(true);
+          
+          // Generate questions using OpenAI API
+          generateSurveyQuestions();
+        }, 500);
+      }
+    } catch (err) {
+      console.error('Error processing message:', err);
+      setError('Failed to process your response. Please try again.');
+      setIsLoading(false);
+    }
+  };
+
+  const generateSurveyQuestions = async () => {
+    setIsLoading(true);
+    
+    try {
+      // Call OpenAI API to generate survey questions
+      // This is a mock implementation - replace with actual OpenAI API call
+      
+      const prompt = `Generate a professional survey based on the following requirements:
+      
+Purpose: ${userResponses[1]}
+Target audience: ${userResponses[2]}
+Number of questions: ${userResponses[3]}
+Topics to cover: ${userResponses[4]}
+Question types: ${userResponses[5]}
+
+Format each question with the following structure:
+{
+  "question_text": "The question text",
+  "question_type": "text/multiple_choice/rating/boolean",
+  "required": true/false,
+  "options": ["Option 1", "Option 2"] // Only for multiple_choice
+}`;
+
+      // Simulating API call to OpenAI
+      console.log("Would call OpenAI with prompt:", prompt);
+      
+      // Simulate API response
+      // In a real implementation, replace this with an actual API call
+      const mockOpenAIResponse = {
+        questions: [
+          {
+            question_text: "How satisfied are you with our product's ease of use?",
+            question_type: "rating",
+            required: true,
+            options: ["1", "2", "3", "4", "5"]
+          },
+          {
+            question_text: "Which features do you use most often? (Select all that apply)",
+            question_type: "multiple_choice",
+            required: true,
+            options: ["Feature A", "Feature B", "Feature C", "Feature D"]
+          },
+          {
+            question_text: "Have you encountered any technical issues while using our product?",
+            question_type: "boolean",
+            required: true
+          },
+          {
+            question_text: "What improvements would you suggest for our product?",
+            question_type: "text",
+            required: false
+          },
+          {
+            question_text: "How likely are you to recommend our product to others?",
+            question_type: "rating",
+            required: true,
+            options: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
+          }
+        ]
+      };
+      
+      // In a real implementation, you would call the OpenAI API something like this:
+      /*
+      const response = await axios.post('https://api.openai.com/v1/chat/completions', {
+        model: "gpt-4",
+        messages: [
+          { role: "system", content: "You are a helpful assistant that generates survey questions." },
+          { role: "user", content: prompt }
+        ],
+        temperature: 0.7,
+      }, {
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
       });
       
-      console.log("Received process response:", response.data);
-      const { question, isComplete } = response.data;
+      // Parse the response
+      const generatedQuestions = JSON.parse(response.data.choices[0].message.content);
+      */
       
-      // Add the agent's response to the messages
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: question
+      // For now, use the mock response
+      const generatedQuestions = mockOpenAIResponse.questions;
+      
+      // Set the generated questions
+      setSurveyQuestions(generatedQuestions);
+      
+      // Format questions for display
+      const formattedQuestions = generatedQuestions.map((q, index) => ({
+        id: `q${index + 1}`,
+        text: q.question_text,
+        type: q.question_type,
+        description: q.question_type === 'multiple_choice' ? `Options: ${q.options?.join(', ')}` : undefined
+      }));
+      
+      // Update the UI with the generated questions
+      setQuestionSuggestions(formattedQuestions);
+      setSelectedQuestions(formattedQuestions);
+      
+      // Add a message showing the generated questions
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `# Survey Questions\n\n## Description\nBased on your inputs, I've generated the following survey questions:\n\n${generatedQuestions.map((q, i) => 
+          `${i+1}. ${q.question_text}${q.options ? `\nOptions: ${q.options.join(', ')}` : ''}`
+        ).join('\n\n')}\n\nYou can review these questions and generate your survey when ready.`
       }]);
-      
-      setIsConversationComplete(isComplete);
-      
-      // If the conversation is complete, get the generated survey questions
-      if (isComplete) {
-        console.log("Conversation complete, getting survey questions...");
-        const surveyResponse = await axios.get(`${API_BASE_URL}/survey-agent/survey`);
-        console.log("Received survey questions:", surveyResponse.data);
-        
-        setSurveyQuestions(surveyResponse.data.questions);
-        
-        // Convert the generated questions to the format expected by the SurveyPreview component
-        const formattedQuestions = surveyResponse.data.questions.map(q => ({
-          id: q.id || Math.random().toString(36).substr(2, 9),
-          text: q.question_text,
-          type: q.question_type,
-          description: q.question_type === 'multiple_choice' ? `Options: ${q.options?.join(', ')}` : undefined
-        }));
-        
-        setQuestionSuggestions(formattedQuestions);
-        setSelectedQuestions(formattedQuestions);
-      }
       
       setIsLoading(false);
     } catch (err) {
-      console.error('Error sending message:', err);
-      
-      // 获取更详细的错误信息
-      let errorMessage = 'Failed to get a response. ';
-      
-      if (err.response) {
-        console.error('Error response:', err.response.data);
-        errorMessage += `Server error: ${err.response.status}. `;
-        if (err.response.data && err.response.data.error) {
-          errorMessage += err.response.data.error;
-        }
-      } else if (err.request) {
-        console.error('No response received');
-        errorMessage += 'No response from server. Check if the backend is running.';
-      } else {
-        errorMessage += err.message;
-      }
-      
-      setError(errorMessage);
+      console.error('Error generating survey questions:', err);
+      setError('Failed to generate survey questions. Please try again.');
       setIsLoading(false);
     }
   };
@@ -295,54 +387,44 @@ const ChatInterface = ({ user, onSetActiveTab }) => {
     }
   };
 
-  const handleSurveyQuestionsReceived = (questions) => {
-    console.log("Received survey questions:", questions);
-    setSurveyQuestions(questions.questions || []);
-  };
-
   const handleGenerateSurvey = async () => {
     try {
       setIsLoading(true);
       setIsSurveyGenerating(true);
       
-      // 从消息中提取调查问卷标题和描述
+      // Extract survey title and description
       const lastMessage = messages[messages.length - 1];
-      console.log("Last message content for survey generation:", lastMessage.content);
       
-      // 使用默认标题和描述，或者从消息中提取
+      // Use default title and description, or extract from messages
       let title = "Customer Feedback Survey";
       let description = "Survey generated with AI assistance";
       
-      // 尝试从消息中提取标题
+      // Try to extract title
       const titleMatch = lastMessage.content.match(/# (.*?)(\n|$)/);
       if (titleMatch) {
         title = titleMatch[1].trim();
       }
       
-      // 尝试从消息中提取描述
+      // Try to extract description
       const descriptionMatch = lastMessage.content.match(/## Description\s+(.*?)(\n##|\n\d+\.|\n$)/s);
       if (descriptionMatch) {
         description = descriptionMatch[1].trim();
       }
       
-      // 获取当前用户ID
+      // Get current user ID
       const { data: { user } } = await supabase.auth.getUser();
-      console.log("Current user for survey creation:", user);
       
       if (!user) {
         throw new Error('You must be logged in to create a survey');
       }
       
-      // 使用系统接收到的问题
-      console.log("Using received survey questions:", surveyQuestions);
-      
-      // 格式化问题
+      // Format questions for database
       let formattedQuestions = [];
       if (surveyQuestions && Array.isArray(surveyQuestions) && surveyQuestions.length > 0) {
         formattedQuestions = formatQuestionsForDatabase(surveyQuestions);
       } else {
         console.warn("No questions received, using default questions");
-        // 设置默认问题，完全匹配所需格式
+        // Set default questions that match required format
         formattedQuestions = [
           {
             id: "q1",
@@ -379,22 +461,18 @@ const ChatInterface = ({ user, onSetActiveTab }) => {
         ];
       }
       
-      console.log("Formatted questions for database:", formattedQuestions);
-      
-      // 准备要插入的调查问卷数据
+      // Prepare survey data for insertion
       const surveyInsertData = {
         title: title,
         description: description,
         created_by: user.id,
-        questions: formattedQuestions,  // 使用格式化后的问题
+        questions: formattedQuestions,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         is_active: true
       };
       
-      console.log("Inserting survey with data:", surveyInsertData);
-      
-      // 插入调查问卷
+      // Insert survey
       const { data, error } = await supabase
         .from('surveys')
         .insert(surveyInsertData)
@@ -402,13 +480,10 @@ const ChatInterface = ({ user, onSetActiveTab }) => {
         .single();
       
       if (error) {
-        console.error("Error inserting survey:", error);
         throw error;
       }
       
-      console.log('Survey saved successfully:', data);
-      
-      // 显示成功消息
+      // Show success message
       setMessages([
         ...messages,
         {
@@ -417,19 +492,17 @@ const ChatInterface = ({ user, onSetActiveTab }) => {
         }
       ]);
       
-      // 添加延迟以便用户看到成功消息
+      // Add delay to allow user to see success message
       setTimeout(() => {
-        // 使用 onSetActiveTab 函数切换到 Surveys 标签
+        // Switch to Surveys tab
         onSetActiveTab('surveys');
-        
-        console.log("Switching to My Surveys tab");
       }, 1500);
       
     } catch (err) {
       console.error('Error generating survey:', err);
       setError(`Failed to generate survey: ${err.message}`);
       
-      // 显示错误消息
+      // Show error message
       setMessages([
         ...messages,
         {
@@ -443,130 +516,51 @@ const ChatInterface = ({ user, onSetActiveTab }) => {
     }
   };
 
-  // 辅助函数，将我们的问题类型映射到数据库中使用的类型
-  const mapQuestionType = (type) => {
-    switch (type) {
-      case 'text':
-        return 'short_answer';
-      case 'multiple':
-        return 'multiple_choice_single';
-      case 'boolean':
-        return 'yes_no';
-      case 'rating':
-        return 'rating';
-      default:
-        return 'short_answer';
-    }
-  };
-
-  // 从消息中解析调查问卷数据
-  const parseSurveyFromMessage = (messageContent) => {
-    // 这个函数需要根据你的 AI 返回的格式来实现
-    
-    // 尝试找到标题
-    let title = 'Customer Feedback Survey'; // 默认标题
-    
-    // 提取问题
-    const questions = [];
-    const questionMatches = messageContent.match(/\d+\.\s+(.*?)(?=\d+\.|$)/gs);
-    
-    if (questionMatches) {
-      questionMatches.forEach((match, index) => {
-        const questionText = match.replace(/^\d+\.\s+/, '').trim();
-        
-        // 检测问题类型和选项
-        let type = 'text';
-        let options = null;
-        
-        // 检查是否包含选项
-        if (questionText.includes('Options:')) {
-          const parts = questionText.split('Options:');
-          const text = parts[0].trim();
-          const optionsText = parts[1].trim();
-          
-          // 解析选项
-          options = optionsText.split(',').map(opt => opt.trim());
-          
-          // 确定问题类型
-          if (optionsText.toLowerCase().includes('yes') && optionsText.toLowerCase().includes('no')) {
-            type = 'boolean';
-          } else if (optionsText.match(/\d+/g) && optionsText.match(/\d+/g).length > 1) {
-            type = 'rating';
-          } else {
-            type = 'multiple';
-          }
-          
-          questions.push({
-            text,
-            type,
-            required: index < 3, // 假设前三个问题是必填的
-            options
-          });
-        } else {
-          questions.push({
-            text: questionText,
-            type: 'text',
-            required: index < 3
-          });
-        }
-      });
-    }
-    
-    return {
-      title,
-      description: 'Survey generated with AI assistance',
-      questions
-    };
-  };
-
-  // 完全重写 formatQuestionsForDatabase 函数以匹配所需格式
-
+  // Format questions for the database
   const formatQuestionsForDatabase = (questions) => {
     if (!questions || !Array.isArray(questions) || questions.length === 0) {
       console.warn("No questions to format");
       return [];
     }
     
-    console.log("Original questions to format:", questions);
-    
     return questions.map((q, index) => {
-      // 创建基本问题结构，完全匹配所需格式
+      // Create basic question structure that matches required format
       const formattedQuestion = {
-        id: `q${index + 1}`,  // 使用 q1, q2, q3 格式
+        id: `q${index + 1}`,
         question_text: q.question_text,
         required: q.required || false,
-        order_index: index + 1  // 使用 order_index 而不是 position
+        order_index: index + 1
       };
       
-      // 根据问题类型设置正确的类型
+      // Set correct question type and options based on the question type
       if (q.question_type === 'text') {
-        // 文本问题 -> short_answer
+        // Text question -> short_answer
         formattedQuestion.question_type = 'short_answer';
-        // short_answer 类型不需要 choices
+        // short_answer type doesn't need choices
       } 
       else if (q.question_type === 'multiple_choice') {
-        // 检查是否是多选题
+        // Check if it's a multiple selection question
         const isMultipleSelection = q.question_text.toLowerCase().includes('select all') || 
                                    q.question_text.toLowerCase().includes('multiple') ||
                                    q.question_text.toLowerCase().includes('choose all');
         
-        // 设置正确的问题类型
+        // Set correct question type
         formattedQuestion.question_type = isMultipleSelection ? 
                                          'multiple_choice_multiple' : 
                                          'multiple_choice_single';
         
-        // 创建 choices 数组
+        // Create choices array
         formattedQuestion.choices = [];
         
-        // 如果有选项，使用它们
+        // If there are options, use them
         if (q.options && Array.isArray(q.options) && q.options.length > 0) {
           formattedQuestion.choices = q.options.map((opt, i) => ({
-            id: `c${i + 1}`,  // 使用 c1, c2, c3 格式
+            id: `c${i + 1}`,
             text: opt,
             order_index: i + 1
           }));
         } else {
-          // 如果没有选项，创建默认选项
+          // If no options, create default options
           formattedQuestion.choices = [
             { id: "c1", text: "Option 1", order_index: 1 },
             { id: "c2", text: "Option 2", order_index: 2 },
@@ -575,10 +569,10 @@ const ChatInterface = ({ user, onSetActiveTab }) => {
         }
       }
       else if (q.question_type === 'rating') {
-        // 评分问题 -> multiple_choice_single
+        // Rating question -> multiple_choice_single
         formattedQuestion.question_type = 'multiple_choice_single';
         
-        // 尝试从问题文本中提取评分范围
+        // Try to extract rating range from question text
         let minRating = 1;
         let maxRating = 5;
         const ratingRangeMatch = q.question_text.match(/scale\s+(?:from|of)\s+(\d+)\s+to\s+(\d+)/i);
@@ -587,7 +581,7 @@ const ChatInterface = ({ user, onSetActiveTab }) => {
           maxRating = parseInt(ratingRangeMatch[2]);
         }
         
-        // 创建评分选项
+        // Create rating options
         formattedQuestion.choices = [];
         for (let i = minRating; i <= maxRating; i++) {
           formattedQuestion.choices.push({
@@ -598,22 +592,34 @@ const ChatInterface = ({ user, onSetActiveTab }) => {
         }
       }
       else if (q.question_type === 'boolean') {
-        // 布尔问题 -> multiple_choice_single
+        // Boolean question -> multiple_choice_single
         formattedQuestion.question_type = 'multiple_choice_single';
         
-        // 创建是/否选项
+        // Create yes/no options
         formattedQuestion.choices = [
           { id: "c1", text: "Yes", order_index: 1 },
           { id: "c2", text: "No", order_index: 2 }
         ];
       }
       else {
-        // 默认为 short_answer
+        // Default to short_answer
         formattedQuestion.question_type = 'short_answer';
       }
       
       return formattedQuestion;
     });
+  };
+
+  // Function to restart the survey creation process
+  const restartSurvey = () => {
+    setMessages([]);
+    setCurrentQuestionIndex(0);
+    setUserResponses({});
+    setIsConversationComplete(false);
+    setQuestionSuggestions([]);
+    setSelectedQuestions([]);
+    setError('');
+    startConversation();
   };
 
   return (
@@ -643,9 +649,9 @@ const ChatInterface = ({ user, onSetActiveTab }) => {
           <span>{error}</span>
           <button 
             className="ml-auto text-red-700 hover:text-red-900 underline"
-            onClick={startConversation}
+            onClick={restartSurvey}
           >
-            Retry
+            Restart
           </button>
         </div>
       )}
@@ -689,12 +695,28 @@ const ChatInterface = ({ user, onSetActiveTab }) => {
         <div ref={chatEndRef} />
       </div>
       
-      {selectedQuestions.length > 0 && (
+      {isConversationComplete && selectedQuestions.length > 0 && (
         <SurveyPreview 
           selectedQuestions={selectedQuestions}
           onGenerateSurvey={handleGenerateSurvey}
           isSurveyGenerating={isSurveyGenerating}
         />
+      )}
+      
+      {/* Status Bar - Show progress through questions */}
+      {!isConversationComplete && (
+        <div className="px-4 py-2 bg-background-subtle border-t border-morandi-gray/20">
+          <div className="flex justify-between items-center text-sm text-morandi-dark/60">
+            <span>Question {currentQuestionIndex + 1} of {predefinedQuestions.length}</span>
+            <span>{Math.round(((currentQuestionIndex + 1) / predefinedQuestions.length) * 100)}% complete</span>
+          </div>
+          <div className="w-full bg-morandi-gray/20 h-1 mt-1 rounded-full overflow-hidden">
+            <div 
+              className="bg-morandi-blue h-1 rounded-full" 
+              style={{ width: `${((currentQuestionIndex + 1) / predefinedQuestions.length) * 100}%` }}
+            ></div>
+          </div>
+        </div>
       )}
       
       {/* Message Input */}
@@ -704,7 +726,7 @@ const ChatInterface = ({ user, onSetActiveTab }) => {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Type your response..."
+            placeholder={isConversationComplete ? "Survey generation complete" : "Type your response..."}
             className="input-field flex-grow"
             disabled={isLoading || isConversationComplete}
           />
@@ -722,4 +744,3 @@ const ChatInterface = ({ user, onSetActiveTab }) => {
 };
 
 export default ChatInterface;
-  

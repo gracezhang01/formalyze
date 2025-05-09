@@ -1,791 +1,747 @@
-# src/backend/langgraph_survey_agent.py
-import os
-import json
-import re
-import logging
-import uuid
-from typing import TypedDict, Dict, List, Optional, Any, Tuple
-from dotenv import load_dotenv
+import { useState, useRef, useEffect } from 'react';
+import { Send, Download, Check, ChevronUp, ChevronDown, Sparkles, AlertCircle } from 'lucide-react';
+import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
+import supabase from '../../lib/supabase';
 
-from langgraph.graph import StateGraph, START, END
+const QuestionSuggestion = ({ question, isSelected, onToggle }) => {
+  return (
+    <div 
+      className={`p-3 rounded-lg border mb-2 cursor-pointer transition-all 
+                  ${isSelected 
+                    ? 'bg-morandi-blue/10 border-morandi-blue' 
+                    : 'bg-white border-morandi-gray/30 hover:border-morandi-blue/50'}`}
+      onClick={onToggle}
+    >
+      <div className="flex items-start">
+        <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mr-3 mt-0.5 
+                         ${isSelected ? 'bg-morandi-blue text-white' : 'border border-morandi-gray/50'}`}>
+          {isSelected && <Check size={12} />}
+        </div>
+        <div>
+          <p className="text-morandi-dark">{question.text}</p>
+          {question.description && (
+            <p className="text-sm text-morandi-dark/60 mt-1">{question.description}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage
+const SurveyPreview = ({ selectedQuestions, onGenerateSurvey, isSurveyGenerating }) => {
+  const [isExpanded, setIsExpanded] = useState(true);
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+  return (
+    <div className="bg-background-subtle border border-morandi-gray/30 rounded-lg overflow-hidden mt-6">
+      <div 
+        className="flex justify-between items-center p-4 cursor-pointer"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <div className="flex items-center">
+          <Sparkles size={18} className="text-morandi-blue mr-2" />
+          <h3 className="font-medium">Survey Preview</h3>
+        </div>
+        <button className="text-morandi-dark/60 hover:text-morandi-dark">
+          {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        </button>
+      </div>
+      
+      {isExpanded && (
+        <div className="p-4 border-t border-morandi-gray/30">
+          {selectedQuestions.length > 0 ? (
+            <>
+              <div className="mb-6">
+                <h4 className="font-medium mb-2">Selected Questions ({selectedQuestions.length})</h4>
+                <ol className="space-y-2 list-decimal list-inside text-morandi-dark/80">
+                  {selectedQuestions.map((q, idx) => (
+                    <li key={idx}>{q.text}</li>
+                  ))}
+                </ol>
+              </div>
+              <div className="flex justify-end">
+                <button 
+                  className="btn-primary flex items-center"
+                  onClick={onGenerateSurvey}
+                  disabled={isSurveyGenerating}
+                >
+                  {isSurveyGenerating ? (
+                    <>
+                      <span>Generating</span>
+                      <span className="ml-2">
+                        <span className="typing-dot"></span>
+                        <span className="typing-dot"></span>
+                        <span className="typing-dot"></span>
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <Download size={16} className="mr-2" />
+                      Generate Survey
+                    </>
+                  )}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="text-center py-6">
+              <p className="text-morandi-dark/70">Complete all questions to build your survey</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
-# Load environment variables
-load_dotenv()
-
-class SurveyQuestion:
-    """Represents a survey question."""
-
-    def __init__(
-        self,
-        question_text: str,
-        question_type: str,
-        options: Optional[List[str]] = None,
-        required: bool = True
-    ):
-        """Initialize a survey question."""
-        self.question_text = question_text
-        self.question_type = question_type
-        self.options = options
-        self.required = required
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary representation."""
-        result = {
-            "question_text": self.question_text,
-            "question_type": self.question_type,
-            "required": self.required
+const ChatMessage = ({ message, isUser }) => {
+  const renderMessageContent = () => {
+    if (typeof message.content === 'string') {
+      return <p className="whitespace-pre-wrap">{message.content}</p>;
+    } else if (Array.isArray(message.content)) {
+      // Handle structured content with suggestions
+      return message.content.map((item, index) => {
+        if (item.type === 'text') {
+          return <p key={`text-${index}`} className="mb-4 whitespace-pre-wrap">{item.text}</p>;
+        } else if (item.type === 'suggestions') {
+          return (
+            <div key={`suggestions-${index}`} className="mt-2">
+              {item.suggestions && item.suggestions.length > 0 && (
+                <p className="mb-2 font-medium">Suggested questions:</p>
+              )}
+            </div>
+          );
         }
-
-        if self.options:
-            result["options"] = self.options
-
-        return result
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'SurveyQuestion':
-        """Create a SurveyQuestion from a dictionary."""
-        return cls(
-            question_text=data["question_text"],
-            question_type=data["question_type"],
-            options=data.get("options"),
-            required=data.get("required", True)
-        )
-
-# Define workflow state
-class State(TypedDict):
-    predefined_questions: List[str]           # List of predefined questions
-    current_question_index: int               # Current question index
-    in_follow_up_mode: bool                   # Whether in follow-up question mode
-    follow_up_questions: List[str]            # List of follow-up questions
-    current_follow_up_index: int              # Current follow-up question index
-    conversation_history: List[Dict[str, str]]  # Conversation history
-    user_response: Optional[str]               # User's latest response
-    next_question: Optional[str]               # Next question to ask
-    is_conversation_complete: bool             # Whether the conversation is complete
-    purpose: Optional[str]                     # Survey purpose
-    audience: Optional[str]                    # Target audience
-    question_count: Optional[int]              # Number of questions
-    topics: List[str]                          # List of topics
-    question_types: List[str]                  # Question types
-    additional_info: Dict[str, Any]            # Additional information
-    generated_questions: Optional[List[Dict[str, Any]]]  # Generated questions
-    error_message: Optional[str]               # Error message
-
-# Initialize LLM model
-def get_llm():
-    """Get LLM model instance."""
-    openai_api_key = os.getenv("OPENAI_API_KEY")
-    if not openai_api_key:
-        raise ValueError("Environment variable OPENAI_API_KEY is not set.")
-    return ChatOpenAI(api_key=openai_api_key, model="gpt-4o-mini")
-
-# Node functions
-
-def initialize_state() -> State:
-    """Initialize state."""
-    return {
-        "predefined_questions": [
-            "What is the primary purpose of your survey? (e.g., customer satisfaction, market research, employee feedback)",
-            "Who is your target audience for this survey?",
-            "How many questions would you like the survey to include?",
-        ],
-        "current_question_index": 0,
-        "in_follow_up_mode": False,
-        "follow_up_questions": [],
-        "current_follow_up_index": 0,
-        "conversation_history": [],
-        "user_response": None,
-        "next_question": None,
-        "is_conversation_complete": False,
-        "purpose": None,
-        "audience": None,
-        "question_count": None,
-        "topics": [],
-        "question_types": [],
-        "additional_info": {},
-        "generated_questions": None,
-        "error_message": None
+        return null;
+      });
     }
+    return <p>{message.content}</p>;
+  };
 
-def start_conversation(state: State) -> State:
-    """Start the conversation with the first predefined question."""
-    first_question = state["predefined_questions"][0]
+  return (
+    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
+      <div className={`rounded-lg max-w-3xl ${
+        isUser 
+          ? 'bg-morandi-blue text-white rounded-tr-none' 
+          : 'bg-background-subtle text-morandi-dark rounded-tl-none'
+      } px-4 py-3`}>
+        {renderMessageContent()}
+      </div>
+    </div>
+  );
+};
 
-    # Add to conversation history
-    state["conversation_history"].append({
-        "role": "assistant",
-        "content": first_question
-    })
+const ChatInterface = ({ user, onSetActiveTab }) => {
+  // 预定义的五个问题
+  const predefinedQuestions = [
+    {
+      id: 1,
+      text: "What is the primary purpose of your survey?",
+      hint: "e.g., customer satisfaction, market research, employee feedback"
+    },
+    {
+      id: 2,
+      text: "Who is your target audience for this survey?",
+      hint: "e.g., existing customers, potential customers, employees"
+    },
+    {
+      id: 3,
+      text: "How many questions would you like the survey to include?",
+      hint: "Recommended: 5-10 for higher completion rates"
+    },
+    {
+      id: 4,
+      text: "What specific topics or areas do you want to cover in your survey?",
+      hint: "e.g., product features, service quality, user experience"
+    },
+    {
+      id: 5,
+      text: "What type of questions would be most helpful for your analysis?",
+      hint: "e.g., multiple choice, rating scales, open-ended questions"
+    }
+  ];
 
-    state["next_question"] = first_question
-    return state
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [questionSuggestions, setQuestionSuggestions] = useState([]);
+  const [selectedQuestions, setSelectedQuestions] = useState([]);
+  const [isSurveyGenerating, setIsSurveyGenerating] = useState(false);
+  const [error, setError] = useState('');
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [userResponses, setUserResponses] = useState({});
+  const [isConversationComplete, setIsConversationComplete] = useState(false);
+  const [surveyQuestions, setSurveyQuestions] = useState([]);
+  const chatEndRef = useRef(null);
+  const navigate = useNavigate();
+  
+  // API base URL for OpenAI
+  const API_BASE_URL = '/api';
 
-def process_user_response(state: State) -> State:
-    """Process the user's response and determine the next question."""
-    user_response = state["user_response"]
-    if not user_response:
-        state["error_message"] = "No user response provided"
-        return state
+  const scrollToBottom = () => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
 
-    # Add user response to conversation history
-    state["conversation_history"].append({
-        "role": "user",
-        "content": user_response
-    })
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
-    # Process the current state
-    if state["in_follow_up_mode"]:
-        # We're processing a follow-up question
+  // Start conversation with first predefined question when component mounts
+  useEffect(() => {
+    startConversation();
+  }, []);
 
-        # Update requirements based on the follow-up
-        state = update_requirements_from_response(state)
+  const startConversation = () => {
+    // Show welcome message and first question
+    setMessages([
+      { 
+        role: 'assistant', 
+        content: "Welcome to the Survey Creator! I'll help you build a custom survey. Please answer these 5 questions to get started."
+      },
+      {
+        role: 'assistant',
+        content: `${predefinedQuestions[0].text}\n\nHint: ${predefinedQuestions[0].hint}`
+      }
+    ]);
+    setCurrentQuestionIndex(0);
+    setUserResponses({});
+    setIsConversationComplete(false);
+    setQuestionSuggestions([]);
+    setSelectedQuestions([]);
+    setError('');
+  };
 
-        # Move to the next follow-up or main question
-        state["current_follow_up_index"] += 1
-
-        if state["current_follow_up_index"] >= len(state["follow_up_questions"]):
-            # We've processed all follow-ups for this main question
-            state["in_follow_up_mode"] = False
-            state["current_question_index"] += 1
-
-            # Check if we've completed all predefined questions
-            if state["current_question_index"] >= len(state["predefined_questions"]):
-                # Conversation is complete
-                completion_message = "Thank you for providing all the information. I'll now generate survey questions based on your requirements."
-
-                # Add to conversation history
-                state["conversation_history"].append({
-                    "role": "assistant",
-                    "content": completion_message
-                })
-
-                state["is_conversation_complete"] = True
-                state["next_question"] = completion_message
-                return state
-
-            # Get the next main question
-            next_question = state["predefined_questions"][state["current_question_index"]]
-
-            # Add to conversation history
-            state["conversation_history"].append({
-                "role": "assistant",
-                "content": next_question
-            })
-
-            state["next_question"] = next_question
-            return state
-        else:
-            # Ask the next follow-up question
-            next_question = state["follow_up_questions"][state["current_follow_up_index"]]
-
-            # Add to conversation history
-            state["conversation_history"].append({
-                "role": "assistant",
-                "content": next_question
-            })
-
-            state["next_question"] = next_question
-            return state
-    else:
-        # We're processing a main question
-
-        # Update requirements based on main question
-        state = update_requirements_from_main_question(state)
-
-        # 只为主要预定义问题生成跟进问题
-        state = generate_follow_up_questions(state)
-        follow_ups = state["follow_up_questions"]
-
-        if follow_ups:
-            # We have follow-up questions to ask
-            state["in_follow_up_mode"] = True
-            state["current_follow_up_index"] = 0
-
-            # Ask the first follow-up
-            next_question = state["follow_up_questions"][0]
-
-            # Add to conversation history
-            state["conversation_history"].append({
-                "role": "assistant",
-                "content": next_question
-            })
-
-            state["next_question"] = next_question
-            return state
-        else:
-            # No follow-ups, move to next main question
-            state["current_question_index"] += 1
-
-            # Check if we've completed all predefined questions
-            if state["current_question_index"] >= len(state["predefined_questions"]):
-                # Conversation is complete
-                completion_message = "Thank you for providing all the information. I'll now generate survey questions based on your requirements."
-
-                # Add to conversation history
-                state["conversation_history"].append({
-                    "role": "assistant",
-                    "content": completion_message
-                })
-
-                state["is_conversation_complete"] = True
-                state["next_question"] = completion_message
-                return state
-
-            # Get the next main question
-            next_question = state["predefined_questions"][state["current_question_index"]]
-
-            # Add to conversation history
-            state["conversation_history"].append({
-                "role": "assistant",
-                "content": next_question
-            })
-
-            state["next_question"] = next_question
-            return state
-
-def update_requirements_from_main_question(state: State) -> State:
-    """Update survey requirements based on a main question answer."""
-    question = state["predefined_questions"][state["current_question_index"]]
-    answer = state["user_response"]
-
-    # Parse the answer based on which question was asked
-    if "purpose" in question.lower():
-        state["purpose"] = answer
-    elif "audience" in question.lower():
-        state["audience"] = answer
-    elif "how many questions" in question.lower():
-        # Try to extract a number
-        try:
-            # Look for numbers in the answer
-            numbers = re.findall(r'\d+', answer)
-            if numbers:
-                state["question_count"] = int(numbers[0])
-            else:
-                # Parse text representations of numbers
-                if "few" in answer.lower() or "short" in answer.lower():
-                    state["question_count"] = 5
-                elif "medium" in answer.lower():
-                    state["question_count"] = 10
-                elif "many" in answer.lower() or "comprehensive" in answer.lower():
-                    state["question_count"] = 15
-                else:
-                    # Default value
-                    state["question_count"] = 10
-        except (ValueError, TypeError):
-            # Default to 10 questions if parsing fails
-            state["question_count"] = 10
-    elif "topics" in question.lower() or "areas" in question.lower():
-        # Split by commas, semicolons, or "and"
-        topics = re.split(r',|;|\s+and\s+', answer)
-        state["topics"] = [topic.strip() for topic in topics if topic.strip()]
-    elif "type of questions" in question.lower():
-        # Check for different question types
-        question_types = []
-        if "multiple choice" in answer.lower():
-            question_types.append("multiple_choice")
-        if "rating" in answer.lower() or "scale" in answer.lower():
-            question_types.append("rating")
-        if "open" in answer.lower() or "text" in answer.lower():
-            question_types.append("text")
-        if "yes/no" in answer.lower() or "boolean" in answer.lower():
-            question_types.append("boolean")
-
-        # If no specific types were mentioned, include all types
-        if not question_types:
-            question_types = ["multiple_choice", "rating", "text", "boolean"]
-
-        state["question_types"] = question_types
-
-    return state
-
-def update_requirements_from_response(state: State) -> State:
-    """Update requirements based on any response."""
-    answer = state["user_response"]
-
-    # Get the current question being answered
-    if state["in_follow_up_mode"]:
-        question = state["follow_up_questions"][state["current_follow_up_index"]]
-    else:
-        question = state["predefined_questions"][state["current_question_index"]]
-
-    # Store in additional info
-    key = question.lower().replace("?", "").strip()
-    # Truncate key to a reasonable length
-    if len(key) > 50:
-        key = key[:50] + "..."
-
-    state["additional_info"][key] = answer
-
-    # If the response provides more specifics about existing requirements, update them
-    if "purpose" in question.lower() and state["purpose"]:
-        state["purpose"] += f" - {answer}"
-    elif "audience" in question.lower() and state["audience"]:
-        state["audience"] += f" - {answer}"
-    elif "topics" in question.lower() and state["topics"]:
-        # Split by commas, semicolons, or "and"
-        topics = re.split(r',|;|\s+and\s+', answer)
-        new_topics = [topic.strip() for topic in topics if topic.strip()]
-        state["topics"].extend(new_topics)
-
-    return state
-
-def generate_follow_up_questions(state: State) -> State:
-    """Generate follow-up questions based on the main question and user response."""
-    user_response = state["user_response"]
-    current_question_index = state["current_question_index"]
+  const sendMessage = async (e) => {
+    e.preventDefault();
+    if (!input.trim() || isLoading) return;
     
-    # 检查用户回答是否是简短或否定回答
-    short_negative_responses = ["no", "nope", "n/a", "none", "i don't know", "idk", "not sure", "nothing"]
-    if user_response.lower().strip() in short_negative_responses or len(user_response.strip()) < 5:
-        # 即使是简短回答，也生成一个跟进问题
-        state["follow_up_questions"] = ["Could you please elaborate a bit more?"]
-        return state
+    const userMessage = { role: 'user', content: input.trim() };
+    setMessages(prev => [...prev, userMessage]);
+    setInput('');
+    setIsLoading(true);
+    
+    try {
+      // Store user response
+      setUserResponses(prev => ({
+        ...prev,
+        [predefinedQuestions[currentQuestionIndex].id]: input.trim()
+      }));
+      
+      // Move to next question or complete
+      const nextIndex = currentQuestionIndex + 1;
+      
+      if (nextIndex < predefinedQuestions.length) {
+        // Show next question
+        setTimeout(() => {
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: `${predefinedQuestions[nextIndex].text}\n\nHint: ${predefinedQuestions[nextIndex].hint}`
+          }]);
+          setCurrentQuestionIndex(nextIndex);
+          setIsLoading(false);
+        }, 500); // Small delay to simulate thinking
+      } else {
+        // All questions answered, generate survey questions
+        setTimeout(() => {
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: "Thank you for your responses! I'll now generate survey questions based on your input. This may take a moment..."
+          }]);
+          
+          setIsLoading(false);
+          setIsConversationComplete(true);
+          
+          // Generate questions using OpenAI API
+          generateSurveyQuestions();
+        }, 500);
+      }
+    } catch (err) {
+      console.error('Error processing message:', err);
+      setError('Failed to process your response. Please try again.');
+      setIsLoading(false);
+    }
+  };
 
-    # Get the current main question
-    main_question = state["predefined_questions"][current_question_index]
+  const generateSurveyQuestions = async () => {
+    setIsLoading(true);
+    
+    try {
+      // Call OpenAI API to generate survey questions
+      // This is a mock implementation - replace with actual OpenAI API call
+      // You'll need to configure the actual endpoint and authentication
+      
+      const prompt = `Generate a professional survey based on the following requirements:
+      
+Goal: ${userResponses[1]}
+Target audience: ${userResponses[2]}
+Information to gather: ${userResponses[3]}
+Number of questions: ${userResponses[4]}
+Preferred question types: ${userResponses[5]}
 
-    # Create the prompt for follow-up questions
-    prompt = f"""
-    The user is designing a survey. They were asked:
-    "{main_question}"
+Format each question with the following structure:
+{
+  "question_text": "The question text",
+  "question_type": "text/multiple_choice/rating/boolean",
+  "required": true/false,
+  "options": ["Option 1", "Option 2"] // Only for multiple_choice
+}`;
 
-    And they responded:
-    "{user_response}"
-
-    Generate 1-2 specific follow-up questions that would help clarify or expand
-    on their answer. These questions should help gather more specific information
-    for creating a targeted survey.
-
-    IMPORTANT: Always generate at least one follow-up question, unless the user's response is extremely detailed and complete.
-
-    Format your response as a JSON array of strings, just the questions themselves.
-    Example: ["Question 1?", "Question 2?"]
-    """
-
-    # Use LLM to generate follow-up questions
-    llm = get_llm()
-    try:
-        response = llm.invoke([HumanMessage(content=prompt)])
-        content = response.content
-
-        try:
-            # Try to extract a JSON array from the response
-            json_match = re.search(r'\[.*\]', content, re.DOTALL)
-
-            if json_match:
-                json_str = json_match.group(0)
-                follow_up_questions = json.loads(json_str)
-                # 确保至少有一个跟进问题
-                if not follow_up_questions:
-                    follow_up_questions = ["Could you please provide more details about your answer?"]
-                # 限制跟进问题数量不超过2个
-                state["follow_up_questions"] = follow_up_questions[:2]
-        except (ValueError, TypeError, json.JSONDecodeError, KeyError) as e:
-            logger.error("Error parsing follow-up questions: %s", e)
-            # 如果解析失败，提供一个默认的跟进问题
-            state["follow_up_questions"] = ["Could you please provide more details about your answer?"]
-
-    except (ValueError, RuntimeError, ConnectionError, TimeoutError) as e:
-        print(f"Error calling LLM: {e}")
-        # Return a basic set of questions
-        state["generated_questions"] = [
-            {
-                "question_text": f"How would you rate your experience with {state.get('purpose') or 'our service'}?",
-                "question_type": "rating",
-                "required": True
-            },
-            {
-                "question_text": "What could be improved?",
-                "question_type": "text",
-                "required": False
-            }
+      // Simulating API call to OpenAI
+      console.log("Would call OpenAI with prompt:", prompt);
+      
+      // Simulate API response
+      // In a real implementation, replace this with an actual API call
+      const mockOpenAIResponse = {
+        questions: [
+          {
+            question_text: "How satisfied are you with our product's ease of use?",
+            question_type: "rating",
+            required: true,
+            options: ["1", "2", "3", "4", "5"]
+          },
+          {
+            question_text: "Which features do you use most often? (Select all that apply)",
+            question_type: "multiple_choice",
+            required: true,
+            options: ["Feature A", "Feature B", "Feature C", "Feature D"]
+          },
+          {
+            question_text: "Have you encountered any technical issues while using our product?",
+            question_type: "boolean",
+            required: true
+          },
+          {
+            question_text: "What improvements would you suggest for our product?",
+            question_type: "text",
+            required: false
+          },
+          {
+            question_text: "How likely are you to recommend our product to others?",
+            question_type: "rating",
+            required: true,
+            options: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
+          }
         ]
-        print("Using fallback questions due to LLM error.")
+      };
+      
+      // In a real implementation, you would call the OpenAI API something like this:
+      /*
+      const response = await axios.post('https://api.openai.com/v1/chat/completions', {
+        model: "gpt-4",
+        messages: [
+          { role: "system", content: "You are a helpful assistant that generates survey questions." },
+          { role: "user", content: prompt }
+        ],
+        temperature: 0.7,
+      }, {
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      // Parse the response
+      const generatedQuestions = JSON.parse(response.data.choices[0].message.content);
+      */
+      
+      // For now, use the mock response
+      const generatedQuestions = mockOpenAIResponse.questions;
+      
+      // Set the generated questions
+      setSurveyQuestions(generatedQuestions);
+      
+      // Format questions for display
+      const formattedQuestions = generatedQuestions.map((q, index) => ({
+        id: `q${index + 1}`,
+        text: q.question_text,
+        type: q.question_type,
+        description: q.question_type === 'multiple_choice' ? `Options: ${q.options?.join(', ')}` : undefined
+      }));
+      
+      // Update the UI with the generated questions
+      setQuestionSuggestions(formattedQuestions);
+      setSelectedQuestions(formattedQuestions);
+      
+      // Add a message showing the generated questions
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `# Survey Questions\n\n## Description\nBased on your inputs, I've generated the following survey questions:\n\n${generatedQuestions.map((q, i) => 
+          `${i+1}. ${q.question_text}${q.options ? `\nOptions: ${q.options.join(', ')}` : ''}`
+        ).join('\n\n')}\n\nYou can review these questions and generate your survey when ready.`
+      }]);
+      
+      setIsLoading(false);
+    } catch (err) {
+      console.error('Error generating survey questions:', err);
+      setError('Failed to generate survey questions. Please try again.');
+      setIsLoading(false);
+    }
+  };
+
+  const toggleQuestionSelection = (question) => {
+    const isAlreadySelected = selectedQuestions.some(q => q.id === question.id);
     
-    return state
+    if (isAlreadySelected) {
+      setSelectedQuestions(selectedQuestions.filter(q => q.id !== question.id));
+    } else {
+      setSelectedQuestions([...selectedQuestions, question]);
+    }
+  };
 
-def generate_survey(state: State) -> State:
-    """Generate survey questions based on the collected requirements."""
-    # Ensure we have the basic requirements
-    if not state.get("purpose"):
-        state["purpose"] = "general feedback"
-    
-    if not state.get("question_count"):
-        state["question_count"] = 5
-    
-    # Create a formatted summary of the requirements
-    requirements_summary = f"""
-    Survey Purpose: {state.get("purpose") or 'Not specified'}
-    Target Audience: {state.get("audience") or 'Not specified'}
-    Number of Questions: {state.get("question_count") or 5}
-    Topics to Cover: {', '.join(state.get("topics", [])) or 'Not specified'}
-    Question Types to Include: {', '.join(state.get("question_types", [])) or 'All types'}
-
-    Additional Information:
-    """
-    if state.get("additional_info"):
-        for key, value in state.get("additional_info", {}).items():
-            requirements_summary += f"- {key}: {value}\n"
-
-    # Create the prompt for generating survey questions
-    prompt = f"""
-    Generate a professional survey based on the following requirements:
-
-    {requirements_summary}
-
-    Generate exactly {state.get("question_count") or 5} survey questions
-    that address the specified purpose, target audience, and topics.
-    Include a mix of the following question types: {', '.join(state.get("question_types", [])) or 'multiple_choice, rating, text, boolean'}.
-
-    For each question, specify:
-    1. The question text
-    2. The question type (multiple_choice, text, rating, boolean)
-    3. Options (for multiple choice questions)
-    4. Whether the question is required
-
-    Format your response as a JSON array of question objects:
-    [
-        {{
-            "question_text": "Question here?",
-            "question_type": "multiple_choice|text|rating|boolean",
-            "options": ["Option 1", "Option 2", ...],  // Only for multiple_choice
-            "required": true|false
-        }},
-        ...
-    ]
-    """
-
-    # Use LLM to generate survey questions
-    llm = get_llm()
-    try:
-        print("Calling LLM to generate survey questions...")
-        response = llm.invoke([HumanMessage(content=prompt)])
-        content = response.content
-        print(f"LLM response received: {content[:100]}...")  # 只打印前100个字符
-        
-        try:
-            # Try to extract a JSON array from the response
-            json_match = re.search(r'\[.*\]', content, re.DOTALL)
-            
-            if json_match:
-                json_str = json_match.group(0)
-                questions = json.loads(json_str)
-                state["generated_questions"] = questions
-                print(f"Successfully parsed {len(questions)} questions from LLM response.")
-            else:
-                # If no JSON array was found, try to parse the entire response
-                questions = json.loads(content)
-                state["generated_questions"] = questions
-                print(f"Successfully parsed {len(questions)} questions from LLM response (full content).")
-        except (ValueError, TypeError, json.JSONDecodeError) as e:
-            print(f"Error parsing generated questions: {e}")
-            # Return a basic set of questions if parsing fails
-            state["generated_questions"] = [
-                {
-                    "question_text": f"How would you rate your experience with {state.get('purpose') or 'our service'}?",
-                    "question_type": "rating",
-                    "required": True
-                },
-                {
-                    "question_text": "What could be improved?",
-                    "question_type": "text",
-                    "required": False
-                }
+  const handleGenerateSurvey = async () => {
+    try {
+      setIsLoading(true);
+      setIsSurveyGenerating(true);
+      
+      // Extract survey title and description
+      const lastMessage = messages[messages.length - 1];
+      
+      // Use default title and description, or extract from messages
+      let title = "Customer Feedback Survey";
+      let description = "Survey generated with AI assistance";
+      
+      // Try to extract title
+      const titleMatch = lastMessage.content.match(/# (.*?)(\n|$)/);
+      if (titleMatch) {
+        title = titleMatch[1].trim();
+      }
+      
+      // Try to extract description
+      const descriptionMatch = lastMessage.content.match(/## Description\s+(.*?)(\n##|\n\d+\.|\n$)/s);
+      if (descriptionMatch) {
+        description = descriptionMatch[1].trim();
+      }
+      
+      // Get current user ID
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('You must be logged in to create a survey');
+      }
+      
+      // Format questions for database
+      let formattedQuestions = [];
+      if (surveyQuestions && Array.isArray(surveyQuestions) && surveyQuestions.length > 0) {
+        formattedQuestions = formatQuestionsForDatabase(surveyQuestions);
+      } else {
+        console.warn("No questions received, using default questions");
+        // Set default questions that match required format
+        formattedQuestions = [
+          {
+            id: "q1",
+            question_text: "What is your favorite feature?",
+            question_type: "short_answer",
+            required: true,
+            order_index: 1
+          },
+          {
+            id: "q2",
+            question_text: "How would you rate our service?",
+            question_type: "multiple_choice_single",
+            required: true,
+            order_index: 2,
+            choices: [
+              { id: "c1", text: "Excellent", order_index: 1 },
+              { id: "c2", text: "Good", order_index: 2 },
+              { id: "c3", text: "Average", order_index: 3 },
+              { id: "c4", text: "Poor", order_index: 4 }
             ]
-            print("Using fallback questions due to parsing error.")
-            
-    except (ValueError, RuntimeError, ConnectionError, TimeoutError) as e:
-        print(f"Error calling LLM: {e}")
-        # Return a basic set of questions
-        state["generated_questions"] = [
-            {
-                "question_text": f"How would you rate your experience with {state.get('purpose') or 'our service'}?",
-                "question_type": "rating",
-                "required": True
-            },
-            {
-                "question_text": "What could be improved?",
-                "question_type": "text",
-                "required": False
-            }
-        ]
-        print("Using fallback questions due to LLM error.")
-    
-    return state
-
-def finalize_result(state: State) -> State:
-    """Finalize the process and prepare the final result."""
-    # If questions haven't been generated yet, generate them now
-    if not state["generated_questions"]:
-        state = generate_survey(state)
-    
-    logger.info("Survey generation complete. Generated %d questions.", len(state["generated_questions"]))
-    
-    return state
-
-# ===================== Build LangGraph Workflow =====================
-
-def build_survey_graph():
-    """Build the survey generation workflow graph."""
-    # Create state graph
-    graph = StateGraph(State)
-    
-    # Add nodes
-    graph.add_node("initialize_state", initialize_state)
-    graph.add_node("start_conversation", start_conversation)
-    graph.add_node("process_user_response", process_user_response)
-    graph.add_node("generate_survey", generate_survey)
-    graph.add_node("finalize_result", finalize_result)
-    
-    # Start edges
-    graph.add_edge(START, "initialize_state")
-    graph.add_edge("initialize_state", "start_conversation")
-    graph.add_edge("start_conversation", "process_user_response")
-    
-    # Define conditional routing - after processing user response, check if conversation is complete
-    def route_after_response(state: State) -> str:
-        if state["is_conversation_complete"]:
-            return "generate_survey"
-        else:
-            return END
-    
-    graph.add_conditional_edges(
-        "process_user_response",
-        route_after_response,
+          },
+          {
+            id: "q3",
+            question_text: "Which features do you use most? (Select all that apply)",
+            question_type: "multiple_choice_multiple",
+            required: false,
+            order_index: 3,
+            choices: [
+              { id: "c1", text: "Feature A", order_index: 1 },
+              { id: "c2", text: "Feature B", order_index: 2 },
+              { id: "c3", text: "Feature C", order_index: 3 }
+            ]
+          }
+        ];
+      }
+      
+      // Prepare survey data for insertion
+      const surveyInsertData = {
+        title: title,
+        description: description,
+        created_by: user.id,
+        questions: formattedQuestions,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        is_active: true
+      };
+      
+      // Insert survey
+      const { data, error } = await supabase
+        .from('surveys')
+        .insert(surveyInsertData)
+        .select()
+        .single();
+      
+      if (error) {
+        throw error;
+      }
+      
+      // Show success message
+      setMessages([
+        ...messages,
         {
-            END: END,
-            "generate_survey": "generate_survey"
+          role: 'assistant',
+          content: `Your survey "${title}" has been created successfully! Redirecting to survey page...`
         }
-    )
-    
-    # Completion edges
-    graph.add_edge("generate_survey", "finalize_result")
-    graph.add_edge("finalize_result", END)
-    
-    # Compile graph
-    return graph.compile()
-
-# ============== External Interface Class ==============
-
-class LangGraphSurveyAgent:
-    """Survey generation agent using LangGraph."""
-    
-    def __init__(self, api_key: Optional[str] = None):
-        """Initialize the agent."""
-        # Set API key
-        if api_key:
-            os.environ["OPENAI_API_KEY"] = api_key
-            
-        # Build workflow graph
-        self.graph = build_survey_graph()
-        
-        # Initialize session state
-        self.session_id = str(uuid.uuid4())
-        self.state = None
-        self.started = False
-    
-    def start_conversation(self) -> str:
-        """Start the conversation with the first predefined question."""
-        # Reset state
-        self.started = True
-        
-        # 初始化状态，以防 invoke 返回 None
-        self.state = initialize_state()
-        
-        try:
-            # Run the first two nodes of the graph
-            config = {"recursion_limit": 10}  # 增加递归限制
-            result = self.graph.invoke(
-                {},
-                config=config,
-                stream_mode=False
-            )
-            
-            # 检查返回值类型
-            if result is not None:
-                if isinstance(result, list):
-                    # 如果是列表，取最后一个事件的状态
-                    if result and len(result) > 0:
-                        self.state = result[-1].get("state", self.state)
-                else:
-                    self.state = result
-        except (ValueError, TypeError, RuntimeError) as e:
-            print(f"Error during graph invocation: {e}")
-            # 保持使用初始化的状态
-        
-        # 确保 state 不是 None
-        if self.state is None:
-            self.state = initialize_state()
-            # 手动调用 start_conversation 函数来获取第一个问题
-            self.state = start_conversation(self.state)
-        
-        # 确保有预定义问题
-        if not self.state.get("next_question") and isinstance(self.state, dict):
-            # 如果没有设置 next_question，手动设置为第一个预定义问题
-            predefined_questions = self.state.get("predefined_questions", [])
-            if predefined_questions:
-                self.state["next_question"] = predefined_questions[0]
-                # 添加到对话历史
-                if "conversation_history" in self.state:
-                    self.state["conversation_history"].append({
-                        "role": "assistant",
-                        "content": predefined_questions[0]
-                    })
-        
-        # Return the first question
-        first_question = self.state.get("next_question", "What is the primary purpose of your survey?")
-        return first_question
-    def process_response(self, user_response: str) -> Tuple[str, bool]:
-        """Process the user's response and determine the next question."""
-        if not self.started:
-            raise ValueError("Must call start_conversation() first")
-        
-        # 创建一个新的状态，而不是修改当前状态
-        # 这样可以确保每次调用 invoke 时都从头开始执行图
-        new_state = initialize_state()
-        new_state["user_response"] = user_response
-        
-        # 复制当前状态的重要信息
-        if isinstance(self.state, dict):
-            new_state["conversation_history"] = self.state.get("conversation_history", [])
-            new_state["current_question_index"] = self.state.get("current_question_index", 0)
-            new_state["in_follow_up_mode"] = self.state.get("in_follow_up_mode", False)
-            new_state["follow_up_questions"] = self.state.get("follow_up_questions", [])
-            new_state["current_follow_up_index"] = self.state.get("current_follow_up_index", 0)
-            new_state["purpose"] = self.state.get("purpose")
-            new_state["audience"] = self.state.get("audience")
-            new_state["question_count"] = self.state.get("question_count")
-            new_state["topics"] = self.state.get("topics", [])
-            new_state["question_types"] = self.state.get("question_types", [])
-            new_state["additional_info"] = self.state.get("additional_info", {})
-        
-        # 直接调用 process_user_response 函数处理用户响应
-        updated_state = process_user_response(new_state)
-        self.state = updated_state
-        
-        # Return next question and whether conversation is complete
-        next_question = self.state.get("next_question", "")
-        is_complete = self.state.get("is_conversation_complete", False)
-        
-        return next_question, is_complete
-    
-    def generate_survey_questions(self) -> List[Dict[str, Any]]:
-        """Generate survey questions."""
-        if not self.state:
-            raise ValueError("No state available. Start conversation first.")
-        
-        # 如果对话尚未完成，尝试完成它
-        if not self.state.get("is_conversation_complete", False):
-            print("Warning: Conversation not marked as complete, but generating survey anyway.")
-        
-        # 如果问题尚未生成，手动调用 generate_survey 函数
-        if not self.state.get("generated_questions"):
-            print("Generating survey questions...")
-            self.state = generate_survey(self.state)
-        
-        # 确保生成了问题
-        if not self.state.get("generated_questions"):
-            print("Failed to generate questions through normal flow, using fallback method.")
-            # 使用备用方法生成基本问题
-            self.state["generated_questions"] = [
-                {
-                    "question_text": f"How would you rate your experience with {self.state.get('purpose') or 'our service'}?",
-                    "question_type": "rating",
-                    "required": True
-                },
-                {
-                    "question_text": "What could be improved?",
-                    "question_type": "text",
-                    "required": False
-                }
-            ]
-        
-        return self.state["generated_questions"]
-    
-    def get_conversation_history(self) -> List[Dict[str, str]]:
-        """Get conversation history."""
-        if not self.state:
-            return []
-        
-        return self.state["conversation_history"]
-    
-    def get_survey_requirements(self) -> Dict[str, Any]:
-        """Get the current survey requirements."""
-        if not self.state:
-            return {}
-        
-        return {
-            "purpose": self.state.get("purpose"),
-            "audience": self.state.get("audience"),
-            "question_count": self.state.get("question_count"),
-            "topics": self.state.get("topics", []),
-            "question_types": self.state.get("question_types", []),
-            "additional_info": self.state.get("additional_info", {})
+      ]);
+      
+      // Add delay to allow user to see success message
+      setTimeout(() => {
+        // Switch to Surveys tab
+        onSetActiveTab('surveys');
+      }, 1500);
+      
+    } catch (err) {
+      console.error('Error generating survey:', err);
+      setError(`Failed to generate survey: ${err.message}`);
+      
+      // Show error message
+      setMessages([
+        ...messages,
+        {
+          role: 'assistant',
+          content: `I'm sorry, there was an error creating your survey: ${err.message}. Please try again.`
         }
+      ]);
+    } finally {
+      setIsLoading(false);
+      setIsSurveyGenerating(false);
+    }
+  };
 
-# ============== Test Script ==============
-
-def test_survey_agent():
-    """Test the survey generation agent."""
-    print_colored = lambda text, color_code: print(f"\033[{color_code}m{text}\033[0m")
+  // Format questions for the database
+  const formatQuestionsForDatabase = (questions) => {
+    if (!questions || !Array.isArray(questions) || questions.length === 0) {
+      console.warn("No questions to format");
+      return [];
+    }
     
-    print_colored("=== LangGraph Survey Generation Agent Test ===", 1)
-    
-    # Check for API key
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        print_colored("⚠️  No OpenAI API key found in environment variables or .env file", 31)
-        api_key = input("Please enter your OpenAI API key: ")
-        if not api_key:
-            print_colored("❌ No API key provided. Exiting.", 31)
-            return
-    
-    # Initialize agent
-    print_colored("🔄 Initializing agent...", 35)
-    agent = LangGraphSurveyAgent(api_key=api_key)
-    
-    # Start conversation
-    question = agent.start_conversation()
-    print_colored(f"🤖 Agent: {question}", 32)
-    
-    # Main conversation loop
-    is_complete = False
-    while not is_complete:
-        # Get user input
-        user_response = input("👤 You: ")
+    return questions.map((q, index) => {
+      // Create basic question structure that matches required format
+      const formattedQuestion = {
+        id: `q${index + 1}`,
+        question_text: q.question_text,
+        required: q.required || false,
+        order_index: index + 1
+      };
+      
+      // Set correct question type and options based on the question type
+      if (q.question_type === 'text') {
+        // Text question -> short_answer
+        formattedQuestion.question_type = 'short_answer';
+        // short_answer type doesn't need choices
+      } 
+      else if (q.question_type === 'multiple_choice') {
+        // Check if it's a multiple selection question
+        const isMultipleSelection = q.question_text.toLowerCase().includes('select all') || 
+                                   q.question_text.toLowerCase().includes('multiple') ||
+                                   q.question_text.toLowerCase().includes('choose all');
         
-        # Process response
-        question, is_complete = agent.process_response(user_response)
-        print_colored(f"🤖 Agent: {question}", 32)
-    
-    # Generate survey questions
-    print_colored("🔄 Generating survey questions...", 35)
-    survey_questions = agent.generate_survey_questions()
-    
-    # Print final survey
-    print_colored("\n=== Generated Survey ===", 1)
-    print_colored(json.dumps(survey_questions, indent=2), 33)
-    
-    # Print survey requirements
-    print_colored("\n=== Survey Requirements ===", 1)
-    print_colored(json.dumps(agent.get_survey_requirements(), indent=2), 33)
-    
-    # Print conversation history
-    print_colored("\n=== Conversation History ===", 1)
-    for turn in agent.get_conversation_history():
-        if turn["role"] == "assistant":
-            print_colored(f"🤖 Agent: {turn['content']}", 32)
-        else:
-            print_colored(f"👤 User: {turn['content']}", 36)
-    
-    print_colored("\n=== Test Complete ===", 1)
+        // Set correct question type
+        formattedQuestion.question_type = isMultipleSelection ? 
+                                         'multiple_choice_multiple' : 
+                                         'multiple_choice_single';
+        
+        // Create choices array
+        formattedQuestion.choices = [];
+        
+        // If there are options, use them
+        if (q.options && Array.isArray(q.options) && q.options.length > 0) {
+          formattedQuestion.choices = q.options.map((opt, i) => ({
+            id: `c${i + 1}`,
+            text: opt,
+            order_index: i + 1
+          }));
+        } else {
+          // If no options, create default options
+          formattedQuestion.choices = [
+            { id: "c1", text: "Option 1", order_index: 1 },
+            { id: "c2", text: "Option 2", order_index: 2 },
+            { id: "c3", text: "Option 3", order_index: 3 }
+          ];
+        }
+      }
+      else if (q.question_type === 'rating') {
+        // Rating question -> multiple_choice_single
+        formattedQuestion.question_type = 'multiple_choice_single';
+        
+        // Try to extract rating range from question text
+        let minRating = 1;
+        let maxRating = 5;
+        const ratingRangeMatch = q.question_text.match(/scale\s+(?:from|of)\s+(\d+)\s+to\s+(\d+)/i);
+        if (ratingRangeMatch) {
+          minRating = parseInt(ratingRangeMatch[1]);
+          maxRating = parseInt(ratingRangeMatch[2]);
+        }
+        
+        // Create rating options
+        formattedQuestion.choices = [];
+        for (let i = minRating; i <= maxRating; i++) {
+          formattedQuestion.choices.push({
+            id: `c${i - minRating + 1}`,
+            text: i.toString(),
+            order_index: i - minRating + 1
+          });
+        }
+      }
+      else if (q.question_type === 'boolean') {
+        // Boolean question -> multiple_choice_single
+        formattedQuestion.question_type = 'multiple_choice_single';
+        
+        // Create yes/no options
+        formattedQuestion.choices = [
+          { id: "c1", text: "Yes", order_index: 1 },
+          { id: "c2", text: "No", order_index: 2 }
+        ];
+      }
+      else {
+        // Default to short_answer
+        formattedQuestion.question_type = 'short_answer';
+      }
+      
+      return formattedQuestion;
+    });
+  };
 
-if __name__ == "__main__":
-    test_survey_agent()
+  // Function to restart the survey creation process
+  const restartSurvey = () => {
+    setMessages([]);
+    setCurrentQuestionIndex(0);
+    setUserResponses({});
+    setIsConversationComplete(false);
+    setQuestionSuggestions([]);
+    setSelectedQuestions([]);
+    setError('');
+    startConversation();
+  };
+
+  return (
+    <div className="bg-white rounded-morandi shadow-morandi overflow-hidden">
+      {/* Video background */}
+      <div className="relative h-36 overflow-hidden rounded-t-morandi">
+        <video 
+          className="absolute inset-0 w-full object-cover"
+          autoPlay
+          loop
+          muted
+          playsInline
+        >
+          <source src="https://cdn.pixabay.com/video/2023/06/23/168485-839220701_medium.mp4" type="video/mp4" />
+          Your browser does not support the video tag.
+        </video>
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+        <div className="absolute bottom-0 left-0 p-6">
+          <h2 className="text-white text-xl font-medium">AI Survey Assistant</h2>
+          <p className="text-white/80 text-sm">Chat with AI to create professional surveys</p>
+        </div>
+      </div>
+      
+      {error && (
+        <div className="mx-6 mt-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm flex items-start">
+          <AlertCircle size={16} className="mr-2 flex-shrink-0 mt-0.5" />
+          <span>{error}</span>
+          <button 
+            className="ml-auto text-red-700 hover:text-red-900 underline"
+            onClick={restartSurvey}
+          >
+            Restart
+          </button>
+        </div>
+      )}
+      
+      {/* Chat Messages */}
+      <div className="p-6 max-h-[400px] overflow-y-auto">
+        {messages.map((message, index) => (
+          <ChatMessage 
+            key={index} 
+            message={message} 
+            isUser={message.role === 'user'} 
+          />
+        ))}
+        
+        {isLoading && (
+          <div className="flex mb-4">
+            <div className="bg-background-subtle text-morandi-dark/70 rounded-lg rounded-tl-none px-4 py-3">
+              <div className="flex space-x-1">
+                <span className="typing-dot"></span>
+                <span className="typing-dot"></span>
+                <span className="typing-dot"></span>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {isConversationComplete && questionSuggestions.length > 0 && (
+          <div className="my-4">
+            <h3 className="font-medium mb-2">Generated Survey Questions:</h3>
+            {questionSuggestions.map((question) => (
+              <QuestionSuggestion
+                key={question.id}
+                question={question}
+                isSelected={selectedQuestions.some(q => q.id === question.id)}
+                onToggle={() => toggleQuestionSelection(question)}
+              />
+            ))}
+          </div>
+        )}
+        
+        <div ref={chatEndRef} />
+      </div>
+      
+      {isConversationComplete && selectedQuestions.length > 0 && (
+        <SurveyPreview 
+          selectedQuestions={selectedQuestions}
+          onGenerateSurvey={handleGenerateSurvey}
+          isSurveyGenerating={isSurveyGenerating}
+        />
+      )}
+      
+      {/* Status Bar - Show progress through questions */}
+      {!isConversationComplete && (
+        <div className="px-4 py-2 bg-background-subtle border-t border-morandi-gray/20">
+          <div className="flex justify-between items-center text-sm text-morandi-dark/60">
+            <span>Question {currentQuestionIndex + 1} of {predefinedQuestions.length}</span>
+            <span>{Math.round(((currentQuestionIndex + 1) / predefinedQuestions.length) * 100)}% complete</span>
+          </div>
+          <div className="w-full bg-morandi-gray/20 h-1 mt-1 rounded-full overflow-hidden">
+            <div 
+              className="bg-morandi-blue h-1 rounded-full" 
+              style={{ width: `${((currentQuestionIndex + 1) / predefinedQuestions.length) * 100}%` }}
+            ></div>
+          </div>
+        </div>
+      )}
+      
+      {/* Message Input */}
+      <div className="border-t border-morandi-gray/20 p-4">
+        <form onSubmit={sendMessage} className="flex">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder={isConversationComplete ? "Survey generation complete" : "Type your response..."}
+            className="input-field flex-grow"
+            disabled={isLoading || isConversationComplete}
+          />
+          <button
+            type="submit"
+            className={`ml-2 btn-primary ${(isLoading || !input.trim() || isConversationComplete) ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={isLoading || !input.trim() || isConversationComplete}
+          >
+            <Send size={18} />
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+export default ChatInterface;
