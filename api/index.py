@@ -3,7 +3,7 @@ import os
 import sys
 import traceback
 
-# Add debugging
+# Add debug information
 print("Current directory:", os.getcwd())
 print("Files in current directory:", os.listdir("."))
 print("Python path:", sys.path)
@@ -17,7 +17,7 @@ def handler(req):
         
         print(f"Processing request: {path} ({method})")
         
-        # Test API endpoint - to verify basic functioning
+        # Test API endpoint - verify basic functionality
         if path == "/api/test":
             print("Processing /api/test endpoint")
             return {
@@ -29,7 +29,7 @@ def handler(req):
                 }
             }
         
-        # Parse path parts
+        # Parse path components
         parts = path.split('/')
         parts = [p for p in parts if p and p != 'api']
         
@@ -41,7 +41,7 @@ def handler(req):
             if action == 'start' and method == 'POST':
                 print("Processing /api/survey-agent/start endpoint")
                 
-                # Skip actual LangGraph for now, just return a mock response
+                # Return mock response
                 return {
                     'statusCode': 200,
                     'body': json.dumps({
@@ -60,7 +60,7 @@ def handler(req):
                 # Get request body
                 try:
                     body_str = req.get('body', '{}')
-                    print(f"Received body: {body_str}")
+                    print(f"Received request body: {body_str}")
                     body = json.loads(body_str)
                     user_response = body.get('userResponse', '')
                     
@@ -68,7 +68,7 @@ def handler(req):
                     return {
                         'statusCode': 200,
                         'body': json.dumps({
-                            'question': f"Thanks for your response: '{user_response}'. Based on your needs, I recommend including the following question types...",
+                            'question': f"Thank you for your response: '{user_response}'. Based on your requirements, I suggest including the following question types...",
                             'isComplete': True
                         }),
                         'headers': {
@@ -99,17 +99,17 @@ def handler(req):
                         "question_text": "How satisfied are you with our product?",
                         "question_type": "multiple_choice",
                         "required": True,
-                        "options": ["Very Satisfied", "Satisfied", "Neutral", "Dissatisfied", "Very Dissatisfied"]
+                        "options": ["Very satisfied", "Satisfied", "Neutral", "Dissatisfied", "Very dissatisfied"]
                     },
                     {
                         "id": "q_2",
-                        "question_text": "What features do you like most about our product?",
+                        "question_text": "Which features of our product do you like the most?",
                         "question_type": "text",
                         "required": False
                     },
                     {
                         "id": "q_3",
-                        "question_text": "Would you recommend our product to a friend?",
+                        "question_text": "Would you recommend our product to friends?",
                         "question_type": "boolean",
                         "required": True
                     }
