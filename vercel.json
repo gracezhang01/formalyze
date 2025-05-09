@@ -23,12 +23,25 @@
       "dest": "/api/index.py"
     },
     {
-      "src": "^/assets/(.*)",
-      "dest": "/dist/assets/$1"
+      "handle": "filesystem"
     },
     {
-      "src": "^/(?!api/?|assets/?)(.*)",
-      "dest": "/dist/index.html"
+      "src": "/assets/(.*)",
+      "dest": "/dist/assets/$1",
+      "headers": {
+        "cache-control": "public, max-age=31536000, immutable"
+      }
+    },
+    {
+      "src": "/(.*\\.[a-z]+$)",
+      "dest": "/dist/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/dist/index.html",
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate"
+      }
     }
   ]
 }
