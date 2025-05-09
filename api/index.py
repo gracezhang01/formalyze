@@ -1,3 +1,4 @@
+from http.server import BaseHTTPRequestHandler
 import json
 import os
 import sys
@@ -16,6 +17,54 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Global variable to store survey agent instance
 survey_agent = None
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self._handle_request('GET')
+
+    def do_POST(self):
+        self._handle_request('POST')
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
+
+    def _handle_request(self, method):
+        try:
+            print(f"Handling {method} request to {self.path}")
+            
+            # Test endpoint
+            if self.path == '/api/test':
+                self._send_json_response(200, {'message': 'Hello from Python on Vercel!'})
+                return
+
+            # Default 404 response
+            self._send_json_response(404, {
+                'error': 'Not Found',
+                'path': self.path,
+                'method': method
+            })
+
+        except Exception as e:
+            print("=== Handler Error ===")
+            print(f"Error Type: {type(e)}")
+            print(f"Error Message: {str(e)}")
+            traceback.print_exc()
+            print("===================")
+            self._send_json_response(500, {'error': str(e)})
+
+    def _send_json_response(self, status_code, data):
+        self.send_response(status_code)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+        self.wfile.write(json.dumps(data).encode())
+
+def handler(request, response):
+    return Handler(request, response)
 
 def handle_survey_start():
     """Handle the survey start endpoint"""
@@ -52,86 +101,6 @@ def handle_survey_start():
         print("Traceback:")
         traceback.print_exc()
         print("========================")
-        return {
-            'statusCode': 500,
-            'headers': {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            },
-            'body': json.dumps({
-                'error': str(e)
-            })
-        }
-
-def handler(request):
-    """
-    Vercel serverless function handler
-    """
-    try:
-        print("=== Request Information ===")
-        print("Request type:", type(request))
-        print("Request content:", request)
-        print("=========================")
-
-        # Extract request information
-        method = request.get('httpMethod', 'GET')
-        path = request.get('path', '')
-        
-        print(f"Processing request: {method} {path}")
-        
-        # Handle CORS preflight
-        if method == 'OPTIONS':
-            print("Handling OPTIONS request")
-            return {
-                'statusCode': 204,
-                'headers': {
-                    'Access-Control-Allow-Origin': '*',
-                    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-                    'Access-Control-Allow-Headers': 'Content-Type'
-                }
-            }
-        
-        # Survey agent endpoints
-        if path == '/api/survey-agent/start' and method == 'POST':
-            print("Handling survey agent start request")
-            return handle_survey_start()
-            
-        # Test endpoint
-        if path == '/api/test':
-            print("Handling test endpoint request")
-            return {
-                'statusCode': 200,
-                'headers': {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
-                },
-                'body': json.dumps({
-                    'message': 'Hello from Python on Vercel!'
-                })
-            }
-
-        # Default 404 response
-        print(f"No matching route found for {path}")
-        return {
-            'statusCode': 404,
-            'headers': {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            },
-            'body': json.dumps({
-                'error': 'Not Found',
-                'path': path,
-                'method': method
-            })
-        }
-
-    except Exception as e:
-        print("=== Handler Error ===")
-        print(f"Error Type: {type(e)}")
-        print(f"Error Message: {str(e)}")
-        print("Traceback:")
-        traceback.print_exc()
-        print("===================")
         return {
             'statusCode': 500,
             'headers': {
