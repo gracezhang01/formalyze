@@ -3,7 +3,9 @@ import os
 import sys
 import traceback
 from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler
 from typing import Dict, Any
+from io import BytesIO
 
 # Add debug logging
 print("=== Debug Information ===")
@@ -20,102 +22,121 @@ print("======================")
 # Add project root to Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Global variable to store survey agent instance
-survey_agent = None
-
-def handler(request):
+class handler(BaseHTTPRequestHandler):
     """
-    Main handler function for Vercel serverless deployment
-    This must be named 'handler' for Vercel to find it
+    Handler class for Vercel serverless deployment.
+    Must inherit from BaseHTTPRequestHandler as required by Vercel.
     """
-    print("=== Request Debug ===")
-    print("Handler called with request type:", type(request))
-    print("Request attributes:", dir(request))
-    print("Request dict:", vars(request) if hasattr(request, '__dict__') else "No __dict__")
+    def __init__(self, *args, **kwargs):
+        print("Handler class initialized")
+        super().__init__(*args, **kwargs)
     
-    try:
-        # Try to access common request attributes
-        method = getattr(request, 'method', None)
-        headers = getattr(request, 'headers', {})
-        path = getattr(request, 'path', None)
-        
-        print(f"Extracted method: {method}")
-        print(f"Extracted headers: {headers}")
-        print(f"Extracted path: {path}")
-        
-        # Set CORS headers
-        response_headers = {
+    def _send_response(self, status_code: int, body: Dict[str, Any], headers: Dict[str, str] = None):
+        """Helper method to send responses"""
+        if headers is None:
+            headers = {}
+            
+        # Default CORS headers
+        default_headers = {
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
             'Access-Control-Allow-Headers': 'Content-Type',
             'Content-Type': 'application/json'
         }
         
-        # Handle OPTIONS request for CORS
-        if method == "OPTIONS":
-            print("Handling OPTIONS request")
-            return {
-                "statusCode": HTTPStatus.OK,
-                "headers": response_headers,
-                "body": ""
-            }
+        # Merge default headers with provided headers
+        headers = {**default_headers, **headers}
+        
+        # Send response
+        self.send_response(status_code)
+        for key, value in headers.items():
+            self.send_header(key, value)
+        self.end_headers()
+        
+        # Send body if present
+        if body:
+            response = json.dumps(body).encode('utf-8')
+            self.wfile.write(response)
 
-        # Test endpoint
-        if path == "/api/test":
-            print("Handling test endpoint")
-            return {
-                "statusCode": HTTPStatus.OK,
-                "headers": response_headers,
-                "body": json.dumps({"message": "API is working!"})
-            }
+    def do_OPTIONS(self):
+        """Handle OPTIONS requests for CORS"""
+        print("Handling OPTIONS request")
+        self._send_response(HTTPStatus.OK, {})
 
-        # Handle survey start endpoint
-        if path == '/api/survey-agent/start' and method == 'POST':
-            print("Handling survey start endpoint")
-            try:
-                from src.backend.langgraph_survey_agent import LangGraphSurveyAgent
-                
-                # Initialize agent with OpenAI API key
-                openai_api_key = os.environ.get('OPENAI_API_KEY')
-                if not openai_api_key:
-                    raise ValueError("OPENAI_API_KEY environment variable not found")
+    def do_GET(self):
+        """Handle GET requests"""
+        print(f"Handling GET request to {self.path}")
+        try:
+            if self.path == "/api/test":
+                print("Handling test endpoint")
+                self._send_response(
+                    HTTPStatus.OK,
+                    {"message": "API is working!"}
+                )
+            else:
+                print(f"Invalid path requested: {self.path}")
+                self._send_response(
+                    HTTPStatus.NOT_FOUND,
+                    {"error": "Invalid endpoint", "requested_path": self.path}
+                )
+        except Exception as e:
+            print("=== Handler Error ===")
+            print(f"Error type: {type(e)}")
+            print(f"Error message: {str(e)}")
+            print(f"Full traceback: {traceback.format_exc()}")
+            self._send_response(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {
+                    "error": "Internal server error",
+                    "details": str(e),
+                    "type": str(type(e))
+                }
+            )
+
+    def do_POST(self):
+        """Handle POST requests"""
+        print(f"Handling POST request to {self.path}")
+        try:
+            if self.path == '/api/survey-agent/start':
+                print("Handling survey start endpoint")
+                try:
+                    from src.backend.langgraph_survey_agent import LangGraphSurveyAgent
                     
-                agent = LangGraphSurveyAgent(api_key=openai_api_key)
-                first_question = agent.start_conversation()
-                
-                return {
-                    'statusCode': 200,
-                    'body': json.dumps({'question': first_question}),
-                    'headers': response_headers
+                    # Initialize agent with OpenAI API key
+                    openai_api_key = os.environ.get('OPENAI_API_KEY')
+                    if not openai_api_key:
+                        raise ValueError("OPENAI_API_KEY environment variable not found")
+                        
+                    agent = LangGraphSurveyAgent(api_key=openai_api_key)
+                    first_question = agent.start_conversation()
+                    
+                    self._send_response(
+                        HTTPStatus.OK,
+                        {'question': first_question}
+                    )
+                except Exception as e:
+                    print(f"Error in survey start: {str(e)}")
+                    print(f"Survey start traceback: {traceback.format_exc()}")
+                    self._send_response(
+                        HTTPStatus.INTERNAL_SERVER_ERROR,
+                        {'error': str(e)}
+                    )
+            else:
+                print(f"Invalid path requested: {self.path}")
+                self._send_response(
+                    HTTPStatus.NOT_FOUND,
+                    {"error": "Invalid endpoint", "requested_path": self.path}
+                )
+        except Exception as e:
+            print("=== Handler Error ===")
+            print(f"Error type: {type(e)}")
+            print(f"Error message: {str(e)}")
+            print(f"Full traceback: {traceback.format_exc()}")
+            self._send_response(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {
+                    "error": "Internal server error",
+                    "details": str(e),
+                    "type": str(type(e))
                 }
-            except Exception as e:
-                print(f"Error in survey start: {str(e)}")
-                print(f"Survey start traceback: {traceback.format_exc()}")
-                return {
-                    'statusCode': 500,
-                    'body': json.dumps({'error': str(e)}),
-                    'headers': response_headers
-                }
-
-        # Invalid path
-        print(f"Invalid path requested: {path}")
-        return {
-            "statusCode": HTTPStatus.NOT_FOUND,
-            "headers": response_headers,
-            "body": json.dumps({"error": "Invalid endpoint", "requested_path": path})
-        }
-
-    except Exception as e:
-        print("=== Handler Error ===")
-        print(f"Error type: {type(e)}")
-        print(f"Error message: {str(e)}")
-        print(f"Full traceback: {traceback.format_exc()}")
-        return {
-            "statusCode": HTTPStatus.INTERNAL_SERVER_ERROR,
-            "headers": response_headers,
-            "body": json.dumps({
-                "error": "Internal server error",
-                "details": str(e),
-                "type": str(type(e))
-            })
-        }
+            )
