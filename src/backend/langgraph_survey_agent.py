@@ -583,7 +583,7 @@ class LangGraphSurveyAgent:
         """Initialize the agent."""
         # Set API key
         if api_key:
-            os.environ["OPENAI_API_KEY"] = "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"
+            os.environ["OPENAI_API_KEY"] = api_key
             
         # Build workflow graph
         self.graph = build_survey_graph()
