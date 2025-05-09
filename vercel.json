@@ -10,6 +10,14 @@
       }
     },
     {
+      "src": "api/survey-agent.py",
+      "use": "@vercel/python",
+      "config": {
+        "runtime": "python3.9",
+        "maxLambdaSize": "15mb"
+      }
+    },
+    {
       "src": "package.json",
       "use": "@vercel/static-build",
       "config": {
@@ -20,7 +28,23 @@
   ],
   "routes": [
     {
-      "src": "/api/(.*)",
+      "src": "/api/survey-agent/start",
+      "dest": "/api/survey-agent.py"
+    },
+    {
+      "src": "/api/survey-agent/process",
+      "dest": "/api/survey-agent.py"
+    },
+    {
+      "src": "/api/survey-agent/survey",
+      "dest": "/api/survey-agent.py"
+    },
+    {
+      "src": "/api/survey-agent/test",
+      "dest": "/api/survey-agent.py"
+    },
+    {
+      "src": "/api/((?!survey-agent).+)",
       "dest": "/api/index.py"
     },
     {
@@ -30,5 +54,8 @@
       "src": "/(.*)",
       "dest": "/index.html"
     }
-  ]
+  ],
+  "env": {
+    "OPENAI_API_KEY": "@openai_api_key"
+  }
 }
