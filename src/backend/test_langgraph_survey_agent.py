@@ -3,12 +3,10 @@ import os
 import uuid
 import json
 from dotenv import load_dotenv
+from langgraph_survey_agent import LangGraphSurveyAgent
 
 # Load environment variables
 load_dotenv()
-
-# Import the LangGraphSurveyAgent class
-from langgraph_survey_agent import LangGraphSurveyAgent
 
 def print_colored(text, color_code):
     """Print text with color."""

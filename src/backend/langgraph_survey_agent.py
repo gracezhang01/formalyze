@@ -12,7 +12,7 @@ from langgraph.graph import StateGraph, START, END
 
 # LangChain modules
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -90,7 +90,7 @@ def get_llm():
 
 # Node functions
 
-def initialize_state(state: Optional[State] = None) -> State:
+def initialize_state() -> State:
     """Initialize state."""
     return {
         "predefined_questions": [
@@ -280,7 +280,7 @@ def update_requirements_from_main_question(state: State) -> State:
                 else:
                     # Default value
                     state["question_count"] = 10
-        except:
+        except (ValueError, TypeError):
             # Default to 10 questions if parsing fails
             state["question_count"] = 10
     elif "topics" in question.lower() or "areas" in question.lower():
@@ -389,24 +389,28 @@ def generate_follow_up_questions(state: State) -> State:
                     follow_up_questions = ["Could you please provide more details about your answer?"]
                 # 限制跟进问题数量不超过2个
                 state["follow_up_questions"] = follow_up_questions[:2]
-            else:
-                # If no JSON array was found, try to parse the entire response
-                follow_up_questions = json.loads(content)
-                # 确保至少有一个跟进问题
-                if not follow_up_questions:
-                    follow_up_questions = ["Could you please provide more details about your answer?"]
-                # 限制跟进问题数量不超过2个
-                state["follow_up_questions"] = follow_up_questions[:2]
-        except Exception as e:
-            logger.error(f"Error parsing follow-up questions: {e}")
+        except (ValueError, TypeError, json.JSONDecodeError, KeyError) as e:
+            logger.error("Error parsing follow-up questions: %s", e)
             # 如果解析失败，提供一个默认的跟进问题
             state["follow_up_questions"] = ["Could you please provide more details about your answer?"]
 
-    except Exception as e:
-        logger.error(f"Error calling LLM: {e}")
-        # 如果调用LLM失败，提供一个默认的跟进问题
-        state["follow_up_questions"] = ["Could you please provide more details about your answer?"]
-
+    except (ValueError, RuntimeError, ConnectionError, TimeoutError) as e:
+        print(f"Error calling LLM: {e}")
+        # Return a basic set of questions
+        state["generated_questions"] = [
+            {
+                "question_text": f"How would you rate your experience with {state.get('purpose') or 'our service'}?",
+                "question_type": "rating",
+                "required": True
+            },
+            {
+                "question_text": "What could be improved?",
+                "question_type": "text",
+                "required": False
+            }
+        ]
+        print("Using fallback questions due to LLM error.")
+    
     return state
 
 def generate_survey(state: State) -> State:
@@ -482,7 +486,7 @@ def generate_survey(state: State) -> State:
                 questions = json.loads(content)
                 state["generated_questions"] = questions
                 print(f"Successfully parsed {len(questions)} questions from LLM response (full content).")
-        except Exception as e:
+        except (ValueError, TypeError, json.JSONDecodeError) as e:
             print(f"Error parsing generated questions: {e}")
             # Return a basic set of questions if parsing fails
             state["generated_questions"] = [
@@ -499,7 +503,7 @@ def generate_survey(state: State) -> State:
             ]
             print("Using fallback questions due to parsing error.")
             
-    except Exception as e:
+    except (ValueError, RuntimeError, ConnectionError, TimeoutError) as e:
         print(f"Error calling LLM: {e}")
         # Return a basic set of questions
         state["generated_questions"] = [
@@ -614,7 +618,7 @@ class LangGraphSurveyAgent:
                         self.state = result[-1].get("state", self.state)
                 else:
                     self.state = result
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError) as e:
             print(f"Error during graph invocation: {e}")
             # 保持使用初始化的状态
         

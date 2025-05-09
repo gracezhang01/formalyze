@@ -143,6 +143,7 @@ const ChatInterface = ({ user, onSetActiveTab }) => {
   const [isConversationComplete, setIsConversationComplete] = useState(false);
   const [surveyQuestions, setSurveyQuestions] = useState([]);
   const chatEndRef = useRef(null);
+  const navigate = useNavigate();
   
   // 设置 API 基础 URL - 使用相对路径
   const API_BASE_URL = '/api';
@@ -412,9 +413,17 @@ const ChatInterface = ({ user, onSetActiveTab }) => {
         ...messages,
         {
           role: 'assistant',
-          content: `Your survey "${title}" has been created successfully! You can view it in your dashboard. [View Survey](${window.location.origin}/dashboard)`
+          content: `Your survey "${title}" has been created successfully! Redirecting to survey page...`
         }
       ]);
+      
+      // 添加延迟以便用户看到成功消息
+      setTimeout(() => {
+        // 使用 onSetActiveTab 函数切换到 Surveys 标签
+        onSetActiveTab('surveys');
+        
+        console.log("Switching to My Surveys tab");
+      }, 1500);
       
     } catch (err) {
       console.error('Error generating survey:', err);
