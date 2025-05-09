@@ -11,7 +11,7 @@
     },
     {
       "src": "package.json",
-      "use": "@vercel/node",
+      "use": "@vercel/static-build",
       "config": {
         "buildCommand": "vite build",
         "outputDirectory": "dist"
@@ -24,15 +24,11 @@
       "dest": "/api/index.py"
     },
     {
-      "src": "^/assets/(.*)",
-      "dest": "/dist/assets/$1"
-    },
-    {
       "handle": "filesystem"
     },
     {
       "src": "/(.*)",
-      "dest": "/dist/index.html"
+      "dest": "/index.html"
     }
   ]
 }
