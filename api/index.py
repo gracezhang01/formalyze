@@ -32,7 +32,7 @@ def handler(event, context):
         # Add your other API endpoints here
         # These will be called for all paths that don't start with /api/survey-agent
         
-        # Default return 404
+        # Default return 404 1
         return {
             'statusCode': 404,
             'body': json.dumps({'error': 'Not found', 'path': path, 'method': method}),
